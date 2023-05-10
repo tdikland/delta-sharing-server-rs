@@ -1,0 +1,100 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct Share {
+    name: String,
+    id: Option<String>,
+}
+
+impl Share {
+    pub fn new(name: String, id: Option<String>) -> Self {
+        Self { name, id }
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct Schema {
+    share: Share,
+    name: String,
+}
+
+impl Schema {
+    pub fn new(share: Share, name: String) -> Self {
+        Self { share, name }
+    }
+
+    pub fn share_name(&self) -> &str {
+        self.share.name()
+    }
+
+    pub fn share_id(&self) -> Option<&str> {
+        self.share.id()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct Table {
+    schema: Schema,
+    name: String,
+    storage_path: String,
+    table_id: Option<String>,
+    table_format: Option<String>,
+}
+
+impl Table {
+    pub fn new(
+        schema: Schema,
+        name: String,
+        storage_path: String,
+        table_id: Option<String>,
+        table_format: Option<String>,
+    ) -> Self {
+        Self {
+            schema,
+            name,
+            storage_path,
+            table_id,
+            table_format,
+        }
+    }
+
+    pub fn share_name(&self) -> &str {
+        self.schema.share_name()
+    }
+
+    pub fn share_id(&self) -> Option<&str> {
+        self.schema.share_id()
+    }
+
+    pub fn schema_name(&self) -> &str {
+        self.schema.name()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn storage_path(&self) -> &str {
+        self.storage_path.as_ref()
+    }
+
+    pub fn table_id(&self) -> Option<&str> {
+        self.table_id.as_deref()
+    }
+
+    pub fn table_format(&self) -> Option<&str> {
+        self.table_format.as_deref()
+    }
+}

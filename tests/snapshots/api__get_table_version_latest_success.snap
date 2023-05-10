@@ -1,0 +1,5 @@
+---
+source: tests/api.rs
+expression: response.text().await
+---
+

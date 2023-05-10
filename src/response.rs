@@ -1,0 +1,238 @@
+use std::io::Write;
+
+use axum::response::Response;
+use axum::{
+    http::{header, StatusCode},
+    response::IntoResponse,
+    Json,
+};
+use bytes::{BufMut, BytesMut};
+use serde::Serialize;
+
+use crate::manager::List;
+use crate::protocol::shared::{Schema, Share, Table};
+use crate::protocol::table::{Metadata, Protocol, SignedChangeFile, SignedDataFile};
+use crate::reader::{SignedTableChanges, SignedTableData, TableMetadata, TableVersion};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSharesResponse {
+    items: Vec<Share>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_page_token: Option<String>,
+}
+
+impl From<List<Share>> for ListSharesResponse {
+    fn from(value: List<Share>) -> Self {
+        Self {
+            items: value.items().to_vec(),
+            next_page_token: value.next_page_token().cloned(),
+        }
+    }
+}
+
+impl IntoResponse for ListSharesResponse {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            Json(self),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetShareResponse {
+    share: Share,
+}
+
+impl From<Share> for GetShareResponse {
+    fn from(value: Share) -> Self {
+        Self { share: value }
+    }
+}
+
+impl IntoResponse for GetShareResponse {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            Json(self),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSchemasResponse {
+    items: Vec<Schema>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_page_token: Option<String>,
+}
+
+impl From<List<Schema>> for ListSchemasResponse {
+    fn from(value: List<Schema>) -> Self {
+        Self {
+            items: value.items().to_vec(),
+            next_page_token: value.next_page_token().cloned(),
+        }
+    }
+}
+
+impl IntoResponse for ListSchemasResponse {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            Json(self),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableInfo {
+    name: String,
+    schema: String,
+    share: String,
+    share_id: Option<String>,
+    id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTablesResponse {
+    items: Vec<TableInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_page_token: Option<String>,
+}
+
+impl From<List<Table>> for ListTablesResponse {
+    fn from(value: List<Table>) -> Self {
+        Self {
+            items: value
+                .items()
+                .iter()
+                .map(|t| TableInfo {
+                    name: t.name().to_owned(),
+                    schema: t.schema_name().to_owned(),
+                    share: t.share_name().to_owned(),
+                    share_id: t.share_id().map(|s| s.to_owned()),
+                    id: t.table_id().map(|s| s.to_owned()),
+                })
+                .collect::<Vec<_>>(),
+            next_page_token: value.next_page_token().cloned(),
+        }
+    }
+}
+
+impl IntoResponse for ListTablesResponse {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            Json(self),
+        )
+            .into_response()
+    }
+}
+
+pub struct TableVersionResponse {
+    version: u64,
+}
+
+impl From<TableVersion> for TableVersionResponse {
+    fn from(version: TableVersion) -> Self {
+        Self { version }
+    }
+}
+
+impl IntoResponse for TableVersionResponse {
+    fn into_response(self) -> Response {
+        (StatusCode::OK, [("Delta-Table-Version", self.version)]).into_response()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum JsonWrapper {
+    Protocol(Protocol),
+    Metadata(Metadata),
+    File(SignedDataFile),
+    Add(SignedChangeFile),
+}
+
+#[derive(Debug)]
+pub struct TableInfoResponse {
+    version: TableVersion,
+    lines: Vec<JsonWrapper>,
+}
+
+impl IntoResponse for TableInfoResponse {
+    fn into_response(self) -> Response {
+        let mut buf = BytesMut::new().writer();
+        for line in self.lines {
+            serde_json::to_writer(&mut buf, &line).unwrap();
+            buf.write_all(b"\n").unwrap();
+        }
+
+        let version = self.version.to_string();
+        let headers = [
+            (
+                header::CONTENT_TYPE.as_str(),
+                "application/x-ndjson; charset=utf-8",
+            ),
+            ("Delta-Table-Version", version.as_ref()),
+        ];
+
+        (StatusCode::OK, headers, buf.into_inner()).into_response()
+    }
+}
+
+impl From<TableMetadata> for TableInfoResponse {
+    fn from(v: TableMetadata) -> Self {
+        let mut lines = vec![];
+        lines.push(JsonWrapper::Protocol(v.protocol));
+        lines.push(JsonWrapper::Metadata(v.metadata));
+
+        Self {
+            version: v.version,
+            lines,
+        }
+    }
+}
+
+impl From<SignedTableData> for TableInfoResponse {
+    fn from(value: SignedTableData) -> Self {
+        let mut lines = vec![];
+        lines.push(JsonWrapper::Protocol(value.protocol.clone()));
+        lines.push(JsonWrapper::Metadata(value.metadata.clone()));
+        for f in value.data.clone() {
+            lines.push(JsonWrapper::File(f.clone()))
+        }
+
+        Self {
+            version: value.version,
+            lines,
+        }
+    }
+}
+
+impl From<SignedTableChanges> for TableInfoResponse {
+    fn from(value: SignedTableChanges) -> Self {
+        let mut lines = vec![];
+        lines.push(JsonWrapper::Protocol(value.protocol));
+        lines.push(JsonWrapper::Metadata(value.metadata));
+        for f in value.changes {
+            lines.push(JsonWrapper::Add(f))
+        }
+
+        Self {
+            version: value.version,
+            lines,
+        }
+    }
+}
