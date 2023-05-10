@@ -1,0 +1,6 @@
+CREATE TABLE `schema` (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    share_id INT NOT NULL REFERENCES share(id)
+);
+

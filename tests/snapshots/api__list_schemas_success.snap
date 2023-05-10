@@ -1,0 +1,5 @@
+---
+source: tests/api.rs
+expression: response.text().await
+---
+{"items":[{"name":"schema1","share":"share1"}]}

@@ -1,0 +1,14 @@
+---
+source: src/protocol/action.rs
+expression: file
+---
+{
+  "url": "https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/tbl/f1.snappy.parquet",
+  "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+  "partitionValues": {
+    "date": "2021-04-28"
+  },
+  "size": 573,
+  "stats": "{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}",
+  "expirationTimestamp": "1652140800000"
+}

@@ -1,0 +1,13 @@
+---
+source: src/state.rs
+expression: response
+---
+{
+  "items": [
+    {
+      "name": "acme_vaccine_data",
+      "share": "vaccine_share"
+    }
+  ],
+  "nextPageToken": "continuation_token"
+}

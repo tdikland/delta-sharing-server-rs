@@ -1,0 +1,7 @@
+---
+source: tests/api.rs
+expression: response.text().await
+---
+{"Protocol":{"min_reader_version":1}}
+{"Metadata":{"id":"abd7ff9d-5fac-48fb-8d13-06c3ce1811ac","name":null,"description":null,"format":{"provider":"Parquet"},"schema_string":"","partition_columns":[],"configuration":{"description":"CDC test Table","delta.enableChangeDataFeed":"true"},"version":null,"size":null,"num_files":null}}
+
