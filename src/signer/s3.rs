@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_sdk_s3::{presigning::PresigningConfig, Client};
+use axum::http::Uri;
 
 use super::UrlSigner;
 
@@ -17,9 +18,10 @@ impl S3UrlSigner {
 
 #[async_trait]
 impl UrlSigner for S3UrlSigner {
-    async fn sign(&self, _path: &str) -> String {
-        let bucket = "";
-        let key = "";
+    async fn sign(&self, path: &str) -> String {
+        let uri = Uri::try_from(path).unwrap();
+        let bucket = uri.host().unwrap();
+        let key = uri.path();
 
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(3600)).unwrap();
         let req = self
