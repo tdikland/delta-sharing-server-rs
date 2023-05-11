@@ -26,7 +26,7 @@
 //!
 //! ```rust,no_run
 //! # use std::sync::Arc;
-//! use delta_sharing_server_rs::manager::{DynamoConfig, DynamoTableManager};
+//! use delta_sharing_server_rs::manager::dynamo::{DynamoConfig, DynamoTableManager};
 //! use delta_sharing_server_rs::state::RouterState;
 //! use delta_sharing_server_rs::router::get_router;
 //! 

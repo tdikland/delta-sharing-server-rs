@@ -1,7 +1,29 @@
+//! A TableManager implementation leveraging AWS DynamoDB.
+//!
+//! ## DynamoDB table layout
+//!
+//! | PK | SK | share_id | storage_path | table_id
+//! SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL | SHARE | share1_id
+//! SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#ALL | SCHEMA |
+//! SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} | TABLE | share1_id | s3://!my-data-bucket/my-table-root/ | table1_id
+//!
+//! Key
+//! 1. KEY: PK+SK
+//! 2. GSI: SK+PK
+//!
+//! Implemented query patterns
+//! 1. QUERY on GSI with SK = SHARE
+//! 2. GET on KEY with PK = SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL
+//! 3. QUERY on GSI with SK = SCHEMA AND PK begins_with(SHARE#{share_name})
+//! 4. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name}#SCHEMA#{schema_name})
+//! 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
+//! 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
+
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{types::AttributeValue, Client};
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::shared::{Schema, Share, Table};
@@ -38,74 +60,55 @@ impl DynamoTableManager {
         Self { client, config }
     }
 
-    pub async fn put_share(
-        &self,
-        share_name: &str,
-        share_id: Option<&str>,
-    ) -> Result<(), TableManagerError> {
-        let pk = format!("SHARE#{}#SCHEMA#ALL#TABLE#ALL", share_name);
+    pub async fn put_share(&self, share: &Share) -> Result<(), DynamoError> {
+        let pk = format!("SHARE#{}#SCHEMA#ALL#TABLE#ALL", share.name());
         let sk = String::from("SHARE");
         let mut req = self
             .client
             .put_item()
-            .table_name(self.config.table_name.clone())
+            .table_name(self.config.table_name())
             .item("PK", AttributeValue::S(pk))
             .item("SK", AttributeValue::S(sk));
 
-        if let Some(id) = share_id {
+        if let Some(id) = share.id() {
             req = req.item("share_id", AttributeValue::S(id.to_owned()))
         }
 
-        req.send().await.map_err(|_| TableManagerError::Other)?;
+        req.send().await.map_err(|e| DynamoError::ServiceError {
+            reason: e.to_string(),
+        })?;
 
         Ok(())
     }
 
-    pub async fn put_schema(&self, share_name: &str, schema_name: &str) -> Result<(), ()> {
-        let pk = format!("SHARE#{}#SCHEMA#{}#TABLE#ALL", share_name, schema_name);
-        let sk = format!("SCHEMA");
-        self.client
-            .put_item()
-            .table_name(self.config.table_name.clone())
-            .item("PK", AttributeValue::S(pk))
-            .item("SK", AttributeValue::S(sk))
+    pub async fn get_share(&self, share_name: &str) -> Result<Share, DynamoError> {
+        let pk = format!("SHARE#{}#SCHEMA#ALL#TABLE#ALL", share_name);
+        let sk = String::from("SHARE");
+        let get_item_output = self
+            .client
+            .get_item()
+            .table_name(self.config.table_name())
+            .key("PK", AttributeValue::S(pk))
+            .key("SK", AttributeValue::S(sk))
             .send()
             .await
             .unwrap();
 
-        Ok(())
-    }
+        let share = get_item_output
+            .item()
+            .ok_or(DynamoError::ShareNotFound {
+                share: share_name.to_owned(),
+            })
+            .map(DynamoItem::try_from)?
+            .try_into_share()?;
 
-    pub async fn put_table(
-        &self,
-        share_name: &str,
-        schema_name: &str,
-        table_name: &str,
-        storage_path: &str,
-    ) -> Result<(), ()> {
-        let pk = format!(
-            "SHARE#{}#SCHEMA#{}#TABLE#{}",
-            share_name, schema_name, table_name
-        );
-        let sk = format!("TABLE");
-        self.client
-            .put_item()
-            .table_name(self.config.table_name.clone())
-            .item("PK", AttributeValue::S(pk))
-            .item("SK", AttributeValue::S(sk))
-            .item("storage_path", AttributeValue::S(storage_path.to_owned()))
-            .send()
-            .await
-            .unwrap();
-
-        Ok(())
+        Ok(share)
     }
 
     pub async fn query_shares(
         &self,
         pagination: &ListCursor,
     ) -> Result<List<Share>, TableManagerError> {
-        dbg!(&pagination);
         let mut query = self
             .client
             .query()
@@ -145,29 +148,35 @@ impl DynamoTableManager {
         }
     }
 
-    pub async fn get_share(&self, share_name: &str) -> Result<Share, TableManagerError> {
-        let pk = format!("SHARE#{}#SCHEMA#ALL#TABLE#ALL", share_name);
-        let get_item_output = self
-            .client
-            .get_item()
+    pub async fn put_schema(&self, share_name: &str, schema_name: &str) -> Result<(), ()> {
+        let pk = format!("SHARE#{}#SCHEMA#{}#TABLE#ALL", share_name, schema_name);
+        let sk = format!("SCHEMA");
+        self.client
+            .put_item()
             .table_name(self.config.table_name.clone())
-            .key("PK", AttributeValue::S(pk))
-            .key("SK", AttributeValue::S("SHARE".to_owned()))
+            .item("PK", AttributeValue::S(pk))
+            .item("SK", AttributeValue::S(sk))
             .send()
             .await
             .unwrap();
 
-        if let Some(item) = get_item_output.item() {
-            let share = DynamoItem::try_from(item)
-                .unwrap()
-                .try_into_share()
-                .unwrap();
-            Ok(share)
-        } else {
-            Err(TableManagerError::ShareNotFound {
-                name: share_name.to_owned(),
-            })
-        }
+        Ok(())
+    }
+
+    pub async fn get_schema(&self, share_name: &str, schema_name: &str) -> Result<(), ()> {
+        // let pk = format!("SHARE#{}#SCHEMA#{}#TABLE#ALL", share_name, schema_name);
+        // let sk = format!("SCHEMA");
+        // self.client
+        //     .put_item()
+        //     .table_name(self.config.table_name.clone())
+        //     .item("PK", AttributeValue::S(pk))
+        //     .item("SK", AttributeValue::S(sk))
+        //     .send()
+        //     .await
+        //     .unwrap();
+
+        // Ok(())
+        todo!()
     }
 
     pub async fn query_schemas(
@@ -214,6 +223,66 @@ impl DynamoTableManager {
             Ok(List::new(schemas, token))
         } else {
             Ok(List::new(vec![], token))
+        }
+    }
+
+    pub async fn put_table(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+        storage_path: &str,
+    ) -> Result<(), ()> {
+        let pk = format!(
+            "SHARE#{}#SCHEMA#{}#TABLE#{}",
+            share_name, schema_name, table_name
+        );
+        let sk = format!("TABLE");
+        self.client
+            .put_item()
+            .table_name(self.config.table_name.clone())
+            .item("PK", AttributeValue::S(pk))
+            .item("SK", AttributeValue::S(sk))
+            .item("storage_path", AttributeValue::S(storage_path.to_owned()))
+            .send()
+            .await
+            .unwrap();
+
+        Ok(())
+    }
+
+    pub async fn get_table(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<Table, TableManagerError> {
+        let pk = format!(
+            "SHARE#{}#SCHEMA#{}#TABLE#{}",
+            share_name, schema_name, table_name
+        );
+        let get_item_output = self
+            .client
+            .get_item()
+            .table_name(self.config.table_name.clone())
+            .key("PK", AttributeValue::S(pk))
+            .key("SK", AttributeValue::S("TABLE".to_owned()))
+            .send()
+            .await
+            .unwrap();
+
+        if let Some(item) = get_item_output.item() {
+            let table = DynamoItem::try_from(item)
+                .unwrap()
+                .try_into_table()
+                .unwrap();
+            Ok(table)
+        } else {
+            Err(TableManagerError::TableNotFound {
+                share_name: share_name.to_owned(),
+                schema_name: schema_name.to_owned(),
+                table_name: table_name.to_owned(),
+            })
         }
     }
 
@@ -285,7 +354,7 @@ impl DynamoTableManager {
         if let Some(limit) = pagination.max_results() {
             query = query.limit(limit as i32);
         }
-        if let Some(cursor) = pagination.to_cursor::<DynamoCursor>().unwrap() {
+        if let Some(cursor) = pagination.try_into().unwrap() {
             query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
         }
 
@@ -309,46 +378,86 @@ impl DynamoTableManager {
             Ok(List::new(vec![], token))
         }
     }
+}
 
-    pub async fn get_table(
-        &self,
-        share_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<Table, TableManagerError> {
-        let pk = format!(
-            "SHARE#{}#SCHEMA#{}#TABLE#{}",
-            share_name, schema_name, table_name
-        );
-        let get_item_output = self
-            .client
-            .get_item()
-            .table_name(self.config.table_name.clone())
-            .key("PK", AttributeValue::S(pk))
-            .key("SK", AttributeValue::S("TABLE".to_owned()))
-            .send()
-            .await
-            .unwrap();
+pub struct DynamoConfig {
+    table_name: String,
+    index_name: String,
+}
 
-        if let Some(item) = get_item_output.item() {
-            let table = DynamoItem::try_from(item)
-                .unwrap()
-                .try_into_table()
-                .unwrap();
-            Ok(table)
-        } else {
-            Err(TableManagerError::TableNotFound {
-                share_name: share_name.to_owned(),
-                schema_name: schema_name.to_owned(),
-                table_name: table_name.to_owned(),
-            })
+impl DynamoConfig {
+    pub fn new(table_name: impl Into<String>, index_name: impl Into<String>) -> Self {
+        Self {
+            table_name: table_name.into(),
+            index_name: index_name.into(),
+        }
+    }
+
+    pub fn table_name(&self) -> &str {
+        self.table_name.as_ref()
+    }
+
+    pub fn index_name(&self) -> &str {
+        self.index_name.as_ref()
+    }
+}
+
+struct DynamoShareItem {
+    inner: Share,
+}
+
+impl DynamoShareItem {
+    fn into_inner(self) -> Share {
+        self.inner
+    }
+}
+
+impl From<Share> for DynamoShareItem {
+    fn from(value: Share) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl TryFrom<&HashMap<String, AttributeValue>> for DynamoShareItem {
+    type Error = DynamoError;
+
+    fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
+        let sk = value
+            .get("SK")
+            .ok_or(DynamoError::InvalidShareItem)?
+            .as_s()
+            .map_err(|_| DynamoError::InvalidShareItem)?;
+        let pk_parts = value
+            .get("PK")
+            .ok_or(DynamoError::InvalidShareItem)?
+            .as_s()
+            .map_err(|_| DynamoError::InvalidShareItem)?
+            .split("#")
+            .collect::<Vec<_>>();
+
+        if pk_parts.len() != 6 {
+            return Err(DynamoError::InvalidShareItem);
+        }
+
+        match sk.as_str() {
+            "SHARE" => {
+                let share_name = pk_parts[1].to_owned();
+                let share_id = value.get("share_id").and_then(|v| v.as_s().ok().cloned());
+                Ok(DynamoShareItem {
+                    inner: Share::new(share_name, share_id),
+                })
+            }
+            _ => Err(DynamoError::InvalidShareItem),
         }
     }
 }
 
-pub struct DynamoConfig {
-    pub table_name: String,
-    pub index_name: String,
+struct DynamoSchemaItem {
+    inner: Schema,
+}
+
+struct DynamoTableItem {
+    inner: Table,
 }
 
 #[derive(Debug)]
@@ -450,6 +559,59 @@ struct DynamoCursor {
     pk: String,
     sk: String,
 }
+
+pub enum DynamoError {
+    ListCursorNotFound,
+    InvalidListCursor,
+    InvalidDynamoCursor,
+    ShareNotFound { share: String },
+    SchemaNotFound { schema: String },
+    TableNotFound { table: String },
+    InvalidShareItem,
+    InvalidSchemaItem,
+    InvalidTableItem,
+    ServiceError { reason: String },
+    Other,
+}
+
+impl TryFrom<ListCursor> for DynamoCursor {
+    type Error = DynamoError;
+
+    fn try_from(value: ListCursor) -> Result<Self, Self::Error> {
+        let token = value.page_token.ok_or(DynamoError::ListCursorNotFound)?;
+        let decoded_token = general_purpose::URL_SAFE
+            .decode(token)
+            .map_err(|_| DynamoError::InvalidListCursor)?;
+        let cursor =
+            serde_json::from_slice(&decoded_token).map_err(|_| DynamoError::InvalidListCursor)?;
+        Ok(cursor)
+    }
+}
+
+impl DynamoCursor {
+    fn into_token(self) -> Result<String, DynamoError> {
+        let value = serde_json::to_vec(&self).map_err(|_| DynamoError::InvalidDynamoCursor)?;
+        let encoded_token = general_purpose::URL_SAFE.encode(value);
+        Ok(encoded_token)
+    }
+}
+
+// pub fn from_cursor<T: Serialize>(cursor: &T) -> Result<String, TableManagerError> {
+//     let value =
+//         serde_json::to_vec(cursor).map_err(|_| TableManagerError::MalformedListCursor)?;
+//     Ok(general_purpose::URL_SAFE.encode(value))
+// }
+
+// pub fn to_cursor<T: DeserializeOwned>(&self) -> Result<Option<T>, TableManagerError> {
+//     if let Some(token) = &self.page_token {
+//         let value = general_purpose::URL_SAFE
+//             .decode(token)
+//             .map_err(|_| TableManagerError::MalformedListCursor)?;
+//         Ok(Some(serde_json::from_slice::<T>(&value).unwrap()))
+//     } else {
+//         Ok(None)
+//     }
+// }
 
 impl DynamoCursor {
     fn try_from_last_key(last_key: &HashMap<String, AttributeValue>) -> Result<Self, ()> {

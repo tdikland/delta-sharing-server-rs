@@ -1,11 +1,8 @@
 use async_trait::async_trait;
-use base64::{engine::general_purpose, Engine as _};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::ops::Deref;
+use serde::{Deserialize, Serialize};
+use std::{error::Error, fmt::Display, ops::Deref};
 
 pub mod dynamo;
-
-pub use dynamo::{DynamoConfig, DynamoTableManager};
 
 use crate::protocol::shared::{Schema, Share, Table};
 
@@ -42,7 +39,7 @@ pub trait TableManager: Send + Sync {
     ) -> Result<Table, TableManagerError>;
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TableManagerError {
     ShareNotFound {
         name: String,
@@ -52,9 +49,11 @@ pub enum TableManagerError {
         schema_name: String,
         table_name: String,
     },
-    MalformedListCursor,
-    InternalError,
-    Other,
+    InvalidListCursor,
+    ConnectionError,
+    Other {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -63,6 +62,36 @@ pub struct ListCursor {
     max_results: Option<u32>,
     page_token: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct List<T> {
+    items: Vec<T>,
+    next_page_token: Option<String>,
+}
+
+impl Display for TableManagerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableManagerError::ShareNotFound { name } => {
+                write!(f, "share `{}` could not be found", name)
+            }
+            TableManagerError::TableNotFound {
+                share_name,
+                schema_name,
+                table_name,
+            } => write!(
+                f,
+                "table `{}.{}.{}` could not be found",
+                share_name, schema_name, table_name
+            ),
+            TableManagerError::InvalidListCursor => todo!(),
+            TableManagerError::ConnectionError => todo!(),
+            TableManagerError::Other { .. } => todo!(),
+        }
+    }
+}
+
+impl Error for TableManagerError {}
 
 impl ListCursor {
     pub fn new(max_results: Option<u32>, page_token: Option<String>) -> Self {
@@ -83,23 +112,6 @@ impl ListCursor {
     pub fn has_next_page_token(&self) -> bool {
         self.page_token.is_some()
     }
-
-    pub fn from_cursor<T: Serialize>(cursor: &T) -> Result<String, TableManagerError> {
-        let value =
-            serde_json::to_vec(cursor).map_err(|_| TableManagerError::MalformedListCursor)?;
-        Ok(general_purpose::URL_SAFE.encode(value))
-    }
-
-    pub fn to_cursor<T: DeserializeOwned>(&self) -> Result<Option<T>, TableManagerError> {
-        if let Some(token) = &self.page_token {
-            let value = general_purpose::URL_SAFE
-                .decode(token)
-                .map_err(|_| TableManagerError::MalformedListCursor)?;
-            Ok(Some(serde_json::from_slice::<T>(&value).unwrap()))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 impl Default for ListCursor {
@@ -109,12 +121,6 @@ impl Default for ListCursor {
             page_token: Default::default(),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct List<T> {
-    items: Vec<T>,
-    next_page_token: Option<String>,
 }
 
 impl<T> List<T> {
