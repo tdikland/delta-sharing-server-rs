@@ -105,11 +105,11 @@ impl ListCursor {
         self.max_results
     }
 
-    pub fn next_page_token(&self) -> Option<&str> {
+    pub fn page_token(&self) -> Option<&str> {
         self.page_token.as_deref()
     }
 
-    pub fn has_next_page_token(&self) -> bool {
+    pub fn has_page_token(&self) -> bool {
         self.page_token.is_some()
     }
 }

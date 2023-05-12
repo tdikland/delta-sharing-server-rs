@@ -99,52 +99,48 @@ impl DynamoTableManager {
             .ok_or(DynamoError::ShareNotFound {
                 share: share_name.to_owned(),
             })
-            .map(DynamoItem::try_from)?
-            .try_into_share()?;
+            .and_then(DynamoShareItem::try_from)?
+            .into_inner();
 
         Ok(share)
     }
 
-    pub async fn query_shares(
-        &self,
-        pagination: &ListCursor,
-    ) -> Result<List<Share>, TableManagerError> {
+    pub async fn query_shares(&self, pagination: &ListCursor) -> Result<List<Share>, DynamoError> {
         let mut query = self
             .client
             .query()
-            .table_name(self.config.table_name.clone())
-            .index_name(self.config.index_name.clone())
+            .table_name(self.config.table_name())
+            .index_name(self.config.index_name())
             .expression_attribute_names("#SK", "SK")
             .expression_attribute_values(":sk", AttributeValue::S("SHARE".to_owned()))
             .key_condition_expression("#SK = :sk");
 
-        // Handle pagination requirements and set cursor to correct position in collection
         if let Some(limit) = pagination.max_results() {
             query = query.limit(limit as i32);
         }
-        if let Some(cursor) = pagination.to_cursor::<DynamoCursor>()? {
+        if let Some(token) = pagination.page_token() {
+            let cursor: DynamoCursor = token.try_into()?;
             query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
         }
 
-        // Fire DynamoDB query
         let query_output = query.send().await.unwrap();
-        dbg!(&query_output);
-
-        // Encode cursor position into pagination token
-        let token = query_output.last_evaluated_key().and_then(|k| {
-            let cursor = DynamoCursor::try_from_last_key(k).unwrap();
-            let token = ListCursor::from_cursor(&cursor).unwrap();
-            Some(token)
-        });
 
         if let Some(items) = query_output.items() {
             let shares = items
                 .iter()
-                .map(|i| DynamoItem::try_from(i).unwrap().try_into_share().unwrap())
-                .collect::<Vec<_>>();
+                .map(|item| {
+                    DynamoShareItem::try_from(item)
+                        .and_then(|share_item| Ok(share_item.into_inner()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let token = query_output
+                .last_evaluated_key()
+                .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
+                .transpose()?;
+
             Ok(List::new(shares, token))
         } else {
-            Ok(List::new(vec![], token))
+            Ok(List::new(vec![], None))
         }
     }
 
@@ -554,12 +550,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoItem {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct DynamoCursor {
-    pk: String,
-    sk: String,
-}
-
+#[derive(Debug)]
 pub enum DynamoError {
     ListCursorNotFound,
     InvalidListCursor,
@@ -574,11 +565,16 @@ pub enum DynamoError {
     Other,
 }
 
-impl TryFrom<ListCursor> for DynamoCursor {
+#[derive(Serialize, Deserialize)]
+struct DynamoCursor {
+    pk: String,
+    sk: String,
+}
+
+impl TryFrom<&str> for DynamoCursor {
     type Error = DynamoError;
 
-    fn try_from(value: ListCursor) -> Result<Self, Self::Error> {
-        let token = value.page_token.ok_or(DynamoError::ListCursorNotFound)?;
+    fn try_from(token: &str) -> Result<Self, Self::Error> {
         let decoded_token = general_purpose::URL_SAFE
             .decode(token)
             .map_err(|_| DynamoError::InvalidListCursor)?;
@@ -588,38 +584,33 @@ impl TryFrom<ListCursor> for DynamoCursor {
     }
 }
 
+impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
+    type Error = DynamoError;
+
+    fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
+        let pk = value
+            .get("PK")
+            .ok_or(DynamoError::Other)?
+            .as_s()
+            .map_err(|_| DynamoError::Other)?;
+        let sk = value
+            .get("SK")
+            .ok_or(DynamoError::Other)?
+            .as_s()
+            .map_err(|_| DynamoError::Other)?;
+
+        Ok(Self {
+            pk: pk.to_owned(),
+            sk: sk.to_owned(),
+        })
+    }
+}
+
 impl DynamoCursor {
     fn into_token(self) -> Result<String, DynamoError> {
         let value = serde_json::to_vec(&self).map_err(|_| DynamoError::InvalidDynamoCursor)?;
         let encoded_token = general_purpose::URL_SAFE.encode(value);
         Ok(encoded_token)
-    }
-}
-
-// pub fn from_cursor<T: Serialize>(cursor: &T) -> Result<String, TableManagerError> {
-//     let value =
-//         serde_json::to_vec(cursor).map_err(|_| TableManagerError::MalformedListCursor)?;
-//     Ok(general_purpose::URL_SAFE.encode(value))
-// }
-
-// pub fn to_cursor<T: DeserializeOwned>(&self) -> Result<Option<T>, TableManagerError> {
-//     if let Some(token) = &self.page_token {
-//         let value = general_purpose::URL_SAFE
-//             .decode(token)
-//             .map_err(|_| TableManagerError::MalformedListCursor)?;
-//         Ok(Some(serde_json::from_slice::<T>(&value).unwrap()))
-//     } else {
-//         Ok(None)
-//     }
-// }
-
-impl DynamoCursor {
-    fn try_from_last_key(last_key: &HashMap<String, AttributeValue>) -> Result<Self, ()> {
-        dbg!(last_key);
-        let pk = last_key.get("PK").unwrap().as_s().unwrap().to_owned();
-        let sk = last_key.get("SK").unwrap().as_s().unwrap().to_owned();
-
-        Ok(Self { pk, sk })
     }
 
     fn into_start_key(self) -> HashMap<String, AttributeValue> {
