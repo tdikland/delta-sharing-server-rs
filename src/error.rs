@@ -32,6 +32,14 @@ impl ServerError {
                 error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
                 message: format!("share `{}` not found", name),
             },
+            ServerError::TableNotFound {
+                share,
+                schema,
+                name,
+            } => ErrorResponse {
+                error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
+                message: format!("table `{}.{}.{}` not found", share, schema, name),
+            },
             ServerError::InvalidPagination { .. } => ErrorResponse {
                 error_code: String::from("400"),
                 message: String::from("Malformed pagination"),
@@ -61,6 +69,9 @@ impl From<TableManagerError> for ServerError {
             TableManagerError::ShareNotFound { share_name } => {
                 Self::ShareNotFound { name: share_name }
             }
+            TableManagerError::InvalidListCursor => ServerError::InvalidPagination {
+                reason: String::from(""),
+            },
             // TableManagerError::InternalError => Self::ShareStore,
             // TableManagerError::Other => Self::Other,
             // TableManagerError::MalformedListCursor => Self::InvalidPagination {

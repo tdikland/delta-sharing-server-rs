@@ -652,9 +652,15 @@ impl DynamoCursor {
 }
 
 impl From<DynamoError> for TableManagerError {
-    fn from(_value: DynamoError) -> Self {
-        TableManagerError::Other {
-            reason: "UNDEFINED".to_string(),
+    fn from(value: DynamoError) -> Self {
+        match value {
+            DynamoError::InvalidListCursor => TableManagerError::InvalidListCursor,
+            DynamoError::ShareNotFound { share } => {
+                TableManagerError::ShareNotFound { share_name: share }
+            }
+            _ => TableManagerError::Other {
+                reason: String::from(""),
+            },
         }
     }
 }

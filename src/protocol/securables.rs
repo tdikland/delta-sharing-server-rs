@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -15,8 +17,14 @@ impl Share {
         self.name.as_ref()
     }
 
-    pub fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+    pub fn id(&self) -> Option<&String> {
+        self.id.as_ref()
+    }
+}
+
+impl Display for Share {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -35,12 +43,18 @@ impl Schema {
         self.share.name()
     }
 
-    pub fn share_id(&self) -> Option<&str> {
+    pub fn share_id(&self) -> Option<&String> {
         self.share.id()
     }
 
     pub fn name(&self) -> &str {
         self.name.as_ref()
+    }
+}
+
+impl Display for Schema {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.share_name(), self.name())
     }
 }
 
@@ -74,7 +88,7 @@ impl Table {
         self.schema.share_name()
     }
 
-    pub fn share_id(&self) -> Option<&str> {
+    pub fn share_id(&self) -> Option<&String> {
         self.schema.share_id()
     }
 
@@ -90,11 +104,23 @@ impl Table {
         self.storage_path.as_ref()
     }
 
-    pub fn table_id(&self) -> Option<&str> {
-        self.table_id.as_deref()
+    pub fn table_id(&self) -> Option<&String> {
+        self.table_id.as_ref()
     }
 
-    pub fn table_format(&self) -> Option<&str> {
-        self.table_format.as_deref()
+    pub fn table_format(&self) -> Option<&String> {
+        self.table_format.as_ref()
+    }
+}
+
+impl Display for Table {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{}.{}",
+            self.share_name(),
+            self.schema_name(),
+            self.name()
+        )
     }
 }
