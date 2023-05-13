@@ -7,13 +7,13 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct RouterState {
+pub struct ShareApiState {
     shared_table_manager: Arc<dyn TableManager>,
     table_readers: HashMap<String, Arc<dyn TableReader>>,
     url_signers: HashMap<String, Arc<dyn UrlSigner>>,
 }
 
-impl RouterState {
+impl ShareApiState {
     pub fn new(manager: Arc<dyn TableManager>) -> Self {
         let mut state = Self {
             shared_table_manager: manager,

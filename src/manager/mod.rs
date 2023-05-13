@@ -4,7 +4,7 @@ use std::{error::Error, fmt::Display, ops::Deref};
 
 pub mod dynamo;
 
-use crate::protocol::shared::{Schema, Share, Table};
+use crate::protocol::securables::{Schema, Share, Table};
 
 #[async_trait]
 pub trait TableManager: Send + Sync {
@@ -42,7 +42,11 @@ pub trait TableManager: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TableManagerError {
     ShareNotFound {
-        name: String,
+        share_name: String,
+    },
+    SchemaNotFound {
+        share_name: String,
+        schema_name: String,
     },
     TableNotFound {
         share_name: String,
@@ -56,25 +60,20 @@ pub enum TableManagerError {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ListCursor {
-    max_results: Option<u32>,
-    page_token: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct List<T> {
-    items: Vec<T>,
-    next_page_token: Option<String>,
-}
-
 impl Display for TableManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TableManagerError::ShareNotFound { name } => {
-                write!(f, "share `{}` could not be found", name)
+            TableManagerError::ShareNotFound { share_name } => {
+                write!(f, "share `{}` could not be found", share_name)
             }
+            TableManagerError::SchemaNotFound {
+                share_name,
+                schema_name,
+            } => write!(
+                f,
+                "schema `{}.{}` could not be found",
+                share_name, schema_name
+            ),
             TableManagerError::TableNotFound {
                 share_name,
                 schema_name,
@@ -84,7 +83,9 @@ impl Display for TableManagerError {
                 "table `{}.{}.{}` could not be found",
                 share_name, schema_name, table_name
             ),
-            TableManagerError::InvalidListCursor => todo!(),
+            TableManagerError::InvalidListCursor => {
+                write!(f, "the provided `page_token` is malformed")
+            }
             TableManagerError::ConnectionError => todo!(),
             TableManagerError::Other { .. } => todo!(),
         }
@@ -92,6 +93,13 @@ impl Display for TableManagerError {
 }
 
 impl Error for TableManagerError {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListCursor {
+    max_results: Option<u32>,
+    page_token: Option<String>,
+}
 
 impl ListCursor {
     pub fn new(max_results: Option<u32>, page_token: Option<String>) -> Self {
@@ -114,13 +122,10 @@ impl ListCursor {
     }
 }
 
-impl Default for ListCursor {
-    fn default() -> Self {
-        Self {
-            max_results: Default::default(),
-            page_token: Default::default(),
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub struct List<T> {
+    items: Vec<T>,
+    next_page_token: Option<String>,
 }
 
 impl<T> List<T> {

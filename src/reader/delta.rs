@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::table::{DataFile, FileFormat, FileFormatProvider, Metadata, Protocol};
+use crate::protocol::table::{DataFile, FileFormat, Metadata, Protocol};
 
 use super::{
     TableChanges, TableData, TableMetadata, TableReader, TableReaderError, TableVersion, Version,
@@ -47,7 +47,7 @@ impl TableReader for DeltaReader {
             name: metadata.name.clone(),
             description: None,
             format: FileFormat {
-                provider: FileFormatProvider::Parquet,
+                provider: String::from("parquet"),
             },
             schema_string: String::from(""),
             partition_columns: metadata.partition_columns.clone(),
@@ -82,7 +82,7 @@ impl TableReader for DeltaReader {
             name: metadata.name.clone(),
             description: None,
             format: FileFormat {
-                provider: FileFormatProvider::Parquet,
+                provider: String::from("parquet"),
             },
             schema_string: String::from(""),
             partition_columns: metadata.partition_columns.clone(),
@@ -131,7 +131,7 @@ impl TableReader for DeltaReader {
             name: metadata.name.clone(),
             description: None,
             format: FileFormat {
-                provider: FileFormatProvider::Parquet,
+                provider: String::from("parquet"),
             },
             schema_string: String::from(""),
             partition_columns: metadata.partition_columns.clone(),

@@ -11,7 +11,7 @@ use delta_sharing_server_rs::manager::{dynamo::DynamoConfig, dynamo::DynamoTable
 use delta_sharing_server_rs::reader::delta::DeltaReader;
 use delta_sharing_server_rs::router::get_router;
 use delta_sharing_server_rs::signer::s3::S3UrlSigner;
-use delta_sharing_server_rs::state::RouterState;
+use delta_sharing_server_rs::state::ShareApiState;
 use std::net::{SocketAddr, TcpListener};
 use std::{convert::TryFrom, sync::Arc};
 use tower::make::Shared;
@@ -26,12 +26,9 @@ impl TestClient {
         let config = aws_config::load_from_env().await;
         let client = aws_sdk_dynamodb::Client::new(&config);
 
-        let share_store_config = DynamoConfig {
-            table_name: String::from("delta-sharing-store"),
-            index_name: String::from("SK-PK-index"),
-        };
-        let table_manager = Arc::new(DynamoTableManager::new(client, share_store_config));
-        let mut state = RouterState::new(table_manager);
+        let dynamo_config = DynamoConfig::new("delta-sharing-store", "SK-PK-index");
+        let table_manager = Arc::new(DynamoTableManager::new(client, dynamo_config));
+        let mut state = ShareApiState::new(table_manager);
 
         state.add_table_reader("DELTA", Arc::new(DeltaReader));
         let s3_signer = S3UrlSigner::new(aws_sdk_s3::Client::new(&config));

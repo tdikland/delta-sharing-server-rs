@@ -1,0 +1,6 @@
+---
+source: tests/api.rs
+assertion_line: 56
+expression: response.text().await
+---
+{"errorCode":"Something went wrong","message":"check your code"}

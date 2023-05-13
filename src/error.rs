@@ -22,7 +22,6 @@ pub enum ServerError {
         schema: String,
         name: String,
     },
-    ShareStore,
     Other,
 }
 
@@ -59,12 +58,15 @@ impl From<TableManagerError> for ServerError {
                 schema: schema_name,
                 name: table_name,
             },
-            TableManagerError::ShareNotFound { name } => Self::ShareNotFound { name },
-            TableManagerError::InternalError => Self::ShareStore,
-            TableManagerError::Other => Self::Other,
-            TableManagerError::MalformedListCursor => Self::InvalidPagination {
-                reason: String::from("UNKNNWON"),
-            },
+            TableManagerError::ShareNotFound { share_name } => {
+                Self::ShareNotFound { name: share_name }
+            }
+            // TableManagerError::InternalError => Self::ShareStore,
+            // TableManagerError::Other => Self::Other,
+            // TableManagerError::MalformedListCursor => Self::InvalidPagination {
+            //     reason: String::from("UNKNNWON"),
+            // },
+            _ => Self::Other,
         }
     }
 }

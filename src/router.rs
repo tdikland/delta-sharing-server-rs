@@ -5,9 +5,9 @@ use axum::{
     Router,
 };
 
-use crate::{handler, state::RouterState};
+use crate::{handler, state::ShareApiState};
 
-pub fn get_router(state: Arc<RouterState>) -> Router {
+pub fn get_router(state: Arc<ShareApiState>) -> Router {
     Router::new()
         .route("/shares", get(handler::list_shares))
         .route("/shares/:share", get(handler::get_share))

@@ -29,16 +29,13 @@
 //! use delta_sharing_server_rs::manager::dynamo::{DynamoConfig, DynamoTableManager};
 //! use delta_sharing_server_rs::state::RouterState;
 //! use delta_sharing_server_rs::router::get_router;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     let config = aws_config::load_from_env().await;
 //!     let client = aws_sdk_dynamodb::Client::new(&config);
 //!       
-//!     let table_manager_config = DynamoConfig {
-//!         table_name: String::from("delta-sharing-store"),
-//!         index_name: String::from("SK-PK-index"),
-//!     };
+//!     let table_manager_config = DynamoConfig::new("delta-sharing-store", "SK-PK-index");
 //!     let table_manager = Arc::new(DynamoTableManager::new(client, table_manager_config));
 //!     
 //!     let state = RouterState::new(table_manager);
@@ -52,7 +49,7 @@
 //! ```
 
 pub mod manager;
-mod protocol;
+pub mod protocol;
 pub mod reader;
 pub mod signer;
 

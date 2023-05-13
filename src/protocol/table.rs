@@ -11,12 +11,7 @@ pub struct Protocol {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileFormat {
-    pub provider: FileFormatProvider,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum FileFormatProvider {
-    Parquet,
+    pub provider: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
