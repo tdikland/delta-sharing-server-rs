@@ -19,9 +19,7 @@ pub async fn list_shares(
     state: State<Arc<SharingServerState>>,
     pagination: Pagination,
 ) -> Result<ListSharesResponse> {
-    let list_shares = state.table_manager().list_shares(&pagination).await?;
-    let response = ListSharesResponse::from(list_shares);
-    Ok(response)
+    state.list_shares(&pagination).await
 }
 
 #[debug_handler]
@@ -29,9 +27,7 @@ pub async fn get_share(
     state: State<Arc<SharingServerState>>,
     share_name: Path<String>,
 ) -> Result<GetShareResponse> {
-    let get_share = state.table_manager().get_share(&share_name).await?;
-    let response = GetShareResponse::from(get_share);
-    Ok(response)
+    state.get_share(&share_name).await
 }
 
 #[debug_handler]
@@ -94,7 +90,9 @@ pub async fn get_table_version(
 
     let table_version = state
         .table_reader("DELTA")
-        .ok_or(ServerError::TableReaderNotImplemented)?
+        .ok_or(ServerError::UnsupportedTableFormat {
+            format: table.format().to_owned(),
+        })?
         .get_table_version(table.storage_path(), version)
         .await?;
 
@@ -114,7 +112,9 @@ pub async fn get_table_metadata(
 
     let table_metadata = state
         .table_reader("DELTA")
-        .ok_or(ServerError::TableReaderNotImplemented)?
+        .ok_or(ServerError::UnsupportedTableFormat {
+            format: table.format().to_owned(),
+        })?
         .get_table_metadata(table.storage_path())
         .await?;
 
@@ -134,14 +134,18 @@ pub async fn get_table_data(
         .await?;
 
     let table_data = state
-        .table_reader(table.table_format().unwrap_or(&String::from("DELTA")))
-        .ok_or(ServerError::TableReaderNotImplemented)?
+        .table_reader(table.format())
+        .ok_or(ServerError::UnsupportedTableFormat {
+            format: table.format().to_owned(),
+        })?
         .get_table_data(table.storage_path(), 0, 0, "")
         .await?;
 
     let signer = state
         .url_signer("S3")
-        .ok_or(ServerError::UrlSignerNotImplemented)?;
+        .ok_or(ServerError::UnsupportedTableStorage {
+            storage: String::from("S3"),
+        })?;
     let signed_table_data = table_data.sign(signer.deref()).await;
 
     let response = TableInfoResponse::from(signed_table_data);
@@ -156,5 +160,3 @@ pub async fn get_table_changes(
 ) -> Result<TableInfoResponse> {
     return Err(ServerError::Other);
 }
-
-

@@ -15,7 +15,9 @@ pub enum ServerError {
     UnsupportedTableFormat {
         format: String,
     },
-    UrlSignerNotImplemented,
+    UnsupportedTableStorage {
+        storage: String,
+    },
     ShareNotFound {
         name: String,
     },

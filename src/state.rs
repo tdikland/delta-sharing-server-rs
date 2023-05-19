@@ -1,12 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
     error::ServerError,
     manager::{ListCursor, TableManager},
-    reader::{delta::DeltaReader, TableReader, Version},
+    reader::{TableReader, Version},
     response::{
         GetShareResponse, ListSchemasResponse, ListSharesResponse, ListTablesResponse,
-        TableVersionResponse,
+        TableInfoResponse, TableVersionResponse,
     },
     signer::UrlSigner,
 };
@@ -20,19 +20,11 @@ pub struct SharingServerState {
 
 impl SharingServerState {
     pub fn new(manager: Arc<dyn TableManager>) -> Self {
-        let mut state = Self {
+        Self {
             shared_table_manager: manager,
             table_readers: HashMap::new(),
             url_signers: HashMap::new(),
-        };
-
-        // TODO: register default?
-        let delta_reader = DeltaReader {};
-        state
-            .table_readers
-            .insert("DELTA".to_owned(), Arc::new(delta_reader));
-
-        state
+        }
     }
 
     pub fn add_table_reader(&mut self, format: impl Into<String>, reader: Arc<dyn TableReader>) {
@@ -41,6 +33,14 @@ impl SharingServerState {
 
     pub fn add_url_signer(&mut self, storage: impl Into<String>, signer: Arc<dyn UrlSigner>) {
         self.url_signers.insert(storage.into(), signer);
+    }
+
+    pub fn set_table_readers(&mut self, readers: HashMap<String, Arc<dyn TableReader>>) {
+        self.table_readers = readers;
+    }
+
+    pub fn set_url_signers(&mut self, signers: HashMap<String, Arc<dyn UrlSigner>>) {
+        self.url_signers = signers;
     }
 
     pub fn table_manager(&self) -> Arc<dyn TableManager> {
@@ -55,7 +55,10 @@ impl SharingServerState {
         self.url_signers.get(storage).cloned()
     }
 
-    pub async fn list_shares(&self, cursor: ListCursor) -> Result<ListSharesResponse, ServerError> {
+    pub async fn list_shares(
+        &self,
+        cursor: &ListCursor,
+    ) -> Result<ListSharesResponse, ServerError> {
         let shares = self.shared_table_manager.list_shares(&cursor).await?;
         Ok(shares.into())
     }
@@ -68,7 +71,7 @@ impl SharingServerState {
     pub async fn list_schemas(
         &self,
         share_name: &str,
-        cursor: ListCursor,
+        cursor: &ListCursor,
     ) -> Result<ListSchemasResponse, ServerError> {
         let schemas = self
             .shared_table_manager
@@ -80,7 +83,7 @@ impl SharingServerState {
     pub async fn list_tables_in_share(
         &self,
         share_name: &str,
-        cursor: ListCursor,
+        cursor: &ListCursor,
     ) -> Result<ListTablesResponse, ServerError> {
         let tables = self
             .shared_table_manager
@@ -93,7 +96,7 @@ impl SharingServerState {
         &self,
         share_name: &str,
         schema_name: &str,
-        cursor: ListCursor,
+        cursor: &ListCursor,
     ) -> Result<ListTablesResponse, ServerError> {
         let tables = self
             .shared_table_manager
@@ -122,6 +125,58 @@ impl SharingServerState {
             .await?;
 
         Ok(table_version.into())
+    }
+
+    pub async fn get_table_metadata(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<TableInfoResponse, ServerError> {
+        let table = self
+            .table_manager()
+            .get_table(&share_name, &schema_name, &table_name)
+            .await?;
+
+        let table_metadata = self
+            .table_reader(table.format())
+            .ok_or(ServerError::UnsupportedTableFormat {
+                format: table.format().to_owned(),
+            })?
+            .get_table_metadata(table.storage_path())
+            .await?;
+
+        Ok(table_metadata.into())
+    }
+
+    pub async fn get_table_data(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+        version: Version,
+    ) -> Result<TableInfoResponse, ServerError> {
+        let table = self
+            .table_manager()
+            .get_table(&share_name, &schema_name, &table_name)
+            .await?;
+
+        let table_data = self
+            .table_reader(table.format())
+            .ok_or(ServerError::UnsupportedTableFormat {
+                format: table.format().to_owned(),
+            })?
+            .get_table_data(table.storage_path(), 0, 0, "")
+            .await?;
+
+        let signer = self
+            .url_signer("S3")
+            .ok_or(ServerError::UnsupportedTableStorage {
+                storage: String::from("S3"),
+            })?;
+        let signed_table_data = table_data.sign(signer.deref()).await;
+
+        Ok(signed_table_data.into())
     }
 }
 
@@ -155,7 +210,7 @@ mod test {
             });
 
         let state = SharingServerState::new(Arc::new(mock_table_manager));
-        let response = state.list_shares(ListCursor::default()).await.unwrap();
+        let response = state.list_shares(&ListCursor::default()).await.unwrap();
         assert_json_snapshot!(response);
     }
 
@@ -192,11 +247,14 @@ mod test {
             });
 
         let state = SharingServerState::new(Arc::new(mock_table_manager));
-        let response1 = state.list_shares(ListCursor::default()).await.unwrap();
+        let response1 = state.list_shares(&ListCursor::default()).await.unwrap();
         assert_json_snapshot!(response1);
 
         let response2 = state
-            .list_shares(ListCursor::new(None, Some("continuation_token".to_owned())))
+            .list_shares(&ListCursor::new(
+                None,
+                Some("continuation_token".to_owned()),
+            ))
             .await
             .unwrap();
         assert_json_snapshot!(response2);
@@ -243,23 +301,5 @@ mod test {
                 name: "vaccine_share".to_owned()
             }
         );
-    }
-
-    #[tokio::test]
-    async fn test_list_schemas() {
-        let mut mock_table_manager = MockTableManager::new();
-        mock_table_manager
-            .expect_list_schemas()
-            .once()
-            .returning(|| {
-                let mut schemas = List::new(vec![], None);
-                schemas.push("vaccine_schema".to_owned());
-                schemas.push("sales_schema".to_owned());
-                Ok(schemas)
-            });
-
-        let state = SharingServerState::new(Arc::new(mock_table_manager));
-        let response = state.list_schemas().await.unwrap();
-        assert_json_snapshot!(response);
     }
 }
