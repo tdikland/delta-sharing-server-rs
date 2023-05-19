@@ -12,7 +12,9 @@ pub enum ServerError {
     InvalidTableVersionRange {
         reason: String,
     },
-    TableReaderNotImplemented,
+    UnsupportedTableFormat {
+        format: String,
+    },
     UrlSignerNotImplemented,
     ShareNotFound {
         name: String,

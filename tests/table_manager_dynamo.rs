@@ -16,7 +16,8 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
 
     if !create_table_if_not_exists {
         let table_manager_config = DynamoConfig::new(table_name, index_name);
-        let table_manager = DynamoTableManager::new(client, table_manager_config);
+        let table_manager =
+            DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
         return table_manager;
     }
 
@@ -27,7 +28,8 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
                 panic!("table_not_active")
             }
             let table_manager_config = DynamoConfig::new(table_name, index_name);
-            let table_manager = DynamoTableManager::new(client, table_manager_config);
+            let table_manager =
+                DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
             return table_manager;
         }
     }
@@ -116,7 +118,8 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
     }
 
     let table_manager_config = DynamoConfig::new(table_name, index_name);
-    let table_manager = DynamoTableManager::new(client, table_manager_config);
+    let table_manager =
+        DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
     table_manager
 }
 

@@ -19,10 +19,14 @@
 //! 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
 //! 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{types::AttributeValue, Client};
+use aws_sdk_dynamodb::{
+    operation::query::{builders::QueryFluentBuilder, QueryOutput},
+    types::AttributeValue,
+    Client,
+};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
@@ -52,12 +56,17 @@ use super::{List, ListCursor, TableManager, TableManagerError};
 
 pub struct DynamoTableManager {
     client: Client,
-    config: DynamoConfig,
+    table_name: String,
+    index_name: String,
 }
 
 impl DynamoTableManager {
-    pub fn new(client: Client, config: DynamoConfig) -> Self {
-        Self { client, config }
+    pub fn new(client: Client, table_name: String, index_name: String) -> Self {
+        Self {
+            client,
+            table_name,
+            index_name,
+        }
     }
 
     pub async fn put_share(&self, share: Share) -> Result<Share, DynamoError> {
@@ -65,7 +74,7 @@ impl DynamoTableManager {
         let mut req = self
             .client
             .put_item()
-            .table_name(self.config.table_name())
+            .table_name(&self.table_name)
             .item("PK", key.partition_key())
             .item("SK", key.sort_key());
 
@@ -82,69 +91,25 @@ impl DynamoTableManager {
 
     pub async fn get_share(&self, share_name: &str) -> Result<Share, DynamoError> {
         let key = DynamoKey::from_share_name(share_name);
-        let get_item_output = self
-            .client
-            .get_item()
-            .table_name(self.config.table_name())
-            .key("PK", key.partition_key())
-            .key("SK", key.sort_key())
-            .send()
-            .await
-            .map_err(|e| DynamoError::ServiceError {
-                reason: e.to_string(),
-            })?;
-
-        let share = get_item_output
-            .item()
-            .ok_or(DynamoError::ShareNotFound {
-                share: share_name.to_owned(),
-            })
-            .and_then(TryInto::try_into)?;
-
-        Ok(share)
+        self.get_securable(key).await.map_err(|e| match e {
+            DynamoError::SecurableNotFound => DynamoError::ShareNotFound {
+                share: share_name.to_string(),
+            },
+            e => e,
+        })
     }
 
-    pub async fn query_shares(&self, pagination: &ListCursor) -> Result<List<Share>, DynamoError> {
-        let mut query = self
-            .client
-            .query()
-            .table_name(self.config.table_name())
-            .index_name(self.config.index_name())
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(":sk", AttributeValue::S("SHARE".to_owned()))
-            .key_condition_expression("#SK = :sk");
-
-        if let Some(limit) = pagination.max_results() {
-            query = query.limit(limit as i32);
-        }
-        if let Some(token) = pagination.page_token() {
-            let cursor: DynamoCursor = token.try_into()?;
-            query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
-        }
-
-        let query_output = query.send().await.unwrap();
-
-        if let Some(items) = query_output.items() {
-            let shares = items
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Share>, _>>()?;
-            let token = query_output
-                .last_evaluated_key()
-                .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
-                .transpose()?;
-
-            Ok(List::new(shares, token))
-        } else {
-            Ok(List::new(vec![], None))
-        }
+    pub async fn query_shares(&self, cursor: &ListCursor) -> Result<List<Share>, DynamoError> {
+        let sk = "SHARE".to_owned();
+        let pk_prefix = format!("SHARE#");
+        self.query_securable(cursor, sk, pk_prefix).await
     }
 
     pub async fn put_schema(&self, schema: Schema) -> Result<Schema, DynamoError> {
         let key = DynamoKey::from_schema_name(schema.share_name(), schema.name());
         self.client
             .put_item()
-            .table_name(self.config.table_name.clone())
+            .table_name(&self.table_name)
             .item("PK", key.partition_key())
             .item("SK", key.sort_key())
             .send()
@@ -162,76 +127,24 @@ impl DynamoTableManager {
         schema_name: &str,
     ) -> Result<Schema, DynamoError> {
         let key = DynamoKey::from_schema_name(share_name, schema_name);
-        let get_item_output = self
-            .client
-            .get_item()
-            .table_name(self.config.table_name())
-            .key("PK", key.partition_key())
-            .key("SK", key.sort_key())
-            .send()
-            .await
-            .unwrap();
-
-        let schema = get_item_output
-            .item()
-            .ok_or(DynamoError::SchemaNotFound {
-                share: share_name.to_owned(),
-                schema: schema_name.to_owned(),
-            })
-            .and_then(TryInto::try_into)?;
-
-        Ok(schema)
+        self.get_securable(key).await
     }
 
     pub async fn query_schemas(
         &self,
         share_name: &str,
-        pagination: &ListCursor,
+        cursor: &ListCursor,
     ) -> Result<List<Schema>, DynamoError> {
-        let mut query = self
-            .client
-            .query()
-            .table_name(self.config.table_name.clone())
-            .index_name(self.config.index_name.clone())
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(":pk", AttributeValue::S(format!("SHARE#{}", share_name)))
-            .expression_attribute_values(":sk", AttributeValue::S("SCHEMA".to_owned()))
-            .key_condition_expression("#SK = :sk AND begins_with(#PK, :pk)");
-
-        // Handle pagination requirements and set cursor to correct position in collection
-        if let Some(limit) = pagination.max_results() {
-            query = query.limit(limit as i32);
-        }
-        if let Some(token) = pagination.page_token() {
-            let cursor: DynamoCursor = token.try_into()?;
-            query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
-        }
-
-        // Fire DynamoDB query
-        let query_output = query.send().await.unwrap();
-
-        if let Some(items) = query_output.items() {
-            let schemas = items
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Schema>, _>>()?;
-            let token = query_output
-                .last_evaluated_key()
-                .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
-                .transpose()?;
-
-            Ok(List::new(schemas, token))
-        } else {
-            Ok(List::new(vec![], None))
-        }
+        let sk = "SCHEMA".to_owned();
+        let pk_prefix = format!("SHARE#{}", share_name);
+        self.query_securable(cursor, sk, pk_prefix).await
     }
 
     pub async fn put_table(&self, table: Table) -> Result<Table, DynamoError> {
         let key = DynamoKey::from_table_name(table.share_name(), table.schema_name(), table.name());
         self.client
             .put_item()
-            .table_name(self.config.table_name())
+            .table_name(&self.table_name)
             .item("PK", key.partition_key())
             .item("SK", key.sort_key())
             .item(
@@ -254,10 +167,40 @@ impl DynamoTableManager {
         table_name: &str,
     ) -> Result<Table, DynamoError> {
         let key = DynamoKey::from_table_name(share_name, schema_name, table_name);
+        self.get_securable(key).await
+    }
+
+    pub async fn query_tables_in_share(
+        &self,
+        share_name: &str,
+        cursor: &ListCursor,
+    ) -> Result<List<Table>, DynamoError> {
+        let sk = "TABLE".to_owned();
+        let pk_prefix = format!("SHARE#{}", share_name);
+        self.query_securable(cursor, sk, pk_prefix).await
+    }
+
+    pub async fn query_tables_in_schema(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        cursor: &ListCursor,
+    ) -> Result<List<Table>, DynamoError> {
+        let sk = "TABLE".to_owned();
+        let pk_prefix = format!("SHARE#{}#SCHEMA#{}", share_name, schema_name);
+        self.query_securable(cursor, sk, pk_prefix).await
+    }
+
+    async fn get_securable<
+        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
+    >(
+        &self,
+        key: DynamoKey,
+    ) -> Result<T, DynamoError> {
         let get_item_output = self
             .client
             .get_item()
-            .table_name(self.config.table_name.clone())
+            .table_name(&self.table_name)
             .key("PK", key.partition_key())
             .key("SK", key.sort_key())
             .send()
@@ -266,106 +209,72 @@ impl DynamoTableManager {
                 reason: e.to_string(),
             })?;
 
-        let table = get_item_output
+        let securable = get_item_output
             .item()
-            .ok_or(DynamoError::TableNotFound {
-                share: share_name.to_owned(),
-                schema: schema_name.to_owned(),
-                table: table_name.to_owned(),
-            })
+            .ok_or(DynamoError::SecurableNotFound)
             .and_then(TryInto::try_into)?;
 
-        Ok(table)
+        Ok(securable)
     }
 
-    pub async fn query_tables_in_share(
+    async fn query_securable<
+        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
+    >(
         &self,
-        share_name: &str,
-        pagination: &ListCursor,
-    ) -> Result<List<Table>, DynamoError> {
+        cursor: &ListCursor,
+        sk: String,
+        pk_begins_with: String,
+    ) -> Result<List<T>, DynamoError> {
         let mut query = self
             .client
             .query()
-            .table_name(self.config.table_name.clone())
-            .index_name(self.config.index_name.clone())
+            .table_name(&self.table_name)
+            .index_name(&self.index_name)
             .expression_attribute_names("#SK", "SK")
             .expression_attribute_names("#PK", "PK")
-            .expression_attribute_values(":sk", AttributeValue::S("TABLE".to_owned()))
-            .expression_attribute_values(":pk", AttributeValue::S(format!("SHARE#{}", share_name)))
+            .expression_attribute_values(":sk", AttributeValue::S(sk))
+            .expression_attribute_values(":pk", AttributeValue::S(pk_begins_with))
             .key_condition_expression("#SK = :sk AND begins_with(#PK, :pk)");
+        query = with_cursor(query, cursor)?;
 
-        // Handle pagination requirements and set cursor to correct position in collection
-        if let Some(limit) = pagination.max_results() {
-            query = query.limit(limit as i32);
-        }
-        if let Some(token) = pagination.page_token() {
-            let cursor: DynamoCursor = token.try_into()?;
-            query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
-        }
-
-        // Fire DynamoDB query
-        let query_output = query.send().await.unwrap();
-
-        if let Some(items) = query_output.items() {
-            let tables = items
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Table>, _>>()?;
-            let token = query_output
-                .last_evaluated_key()
-                .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
-                .transpose()?;
-
-            Ok(List::new(tables, token))
-        } else {
-            Ok(List::new(vec![], None))
-        }
+        let query_output = query.send().await.map_err(|e| DynamoError::ServiceError {
+            reason: e.to_string(),
+        })?;
+        let list_result = parse_query_output(query_output)?;
+        Ok(list_result)
     }
+}
 
-    pub async fn query_tables_in_schema(
-        &self,
-        share_name: &str,
-        schema_name: &str,
-        pagination: &ListCursor,
-    ) -> Result<List<Table>, DynamoError> {
-        let pk = format!("SHARE#{}#SCHEMA#{}", share_name, schema_name);
-        let mut query = self
-            .client
-            .query()
-            .table_name(self.config.table_name.clone())
-            .index_name(self.config.index_name.clone())
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_values(":sk", AttributeValue::S("TABLE".to_owned()))
-            .expression_attribute_values(":pk", AttributeValue::S(pk))
-            .key_condition_expression("#SK = :sk AND begins_with(#PK, :pk)");
+fn with_cursor(
+    mut query: QueryFluentBuilder,
+    cursor: &ListCursor,
+) -> Result<QueryFluentBuilder, DynamoError> {
+    if let Some(limit) = cursor.max_results() {
+        query = query.limit(limit as i32);
+    }
+    if let Some(token) = cursor.page_token() {
+        let cursor: DynamoCursor = token.try_into()?;
+        query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
+    }
+    Ok(query)
+}
 
-        // Handle pagination requirements and set cursor to correct position in collection
-        if let Some(limit) = pagination.max_results() {
-            query = query.limit(limit as i32);
-        }
-        if let Some(token) = pagination.page_token() {
-            let cursor: DynamoCursor = token.try_into()?;
-            query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
-        }
-
-        // Fire DynamoDB query
-        let query_output = query.send().await.unwrap();
-
-        if let Some(items) = query_output.items() {
-            let tables = items
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Table>, _>>()?;
-            let token = query_output
-                .last_evaluated_key()
-                .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
-                .transpose()?;
-
-            Ok(List::new(tables, token))
-        } else {
-            Ok(List::new(vec![], None))
-        }
+fn parse_query_output<T>(output: QueryOutput) -> Result<List<T>, DynamoError>
+where
+    T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
+{
+    if let Some(items) = output.items() {
+        let securables = items
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<T>, _>>()?;
+        let token = output
+            .last_evaluated_key()
+            .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
+            .transpose()?;
+        Ok(List::new(securables, token))
+    } else {
+        Ok(List::new(vec![], None))
     }
 }
 
@@ -396,6 +305,7 @@ pub enum DynamoError {
     ListCursorNotFound,
     InvalidListCursor,
     InvalidDynamoCursor,
+    SecurableNotFound,
     ShareNotFound {
         share: String,
     },
@@ -490,6 +400,19 @@ impl DynamoKey {
 
     fn table_name(&self) -> Option<&String> {
         self.table_name.as_ref()
+    }
+}
+
+impl Display for DynamoKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.schema_name, &self.table_name) {
+            (None, None) => write!(f, "{}", self.share_name),
+            (None, Some(_)) => Err(std::fmt::Error),
+            (Some(schema_name), None) => write!(f, "{}.{}", self.share_name, schema_name),
+            (Some(schema_name), Some(table_name)) => {
+                write!(f, "{}.{}.{}", self.share_name, schema_name, table_name)
+            }
+        }
     }
 }
 
@@ -601,6 +524,21 @@ struct DynamoCursor {
     sk: String,
 }
 
+impl DynamoCursor {
+    fn into_token(self) -> Result<String, DynamoError> {
+        let value = serde_json::to_vec(&self).map_err(|_| DynamoError::InvalidDynamoCursor)?;
+        let encoded_token = general_purpose::URL_SAFE.encode(value);
+        Ok(encoded_token)
+    }
+
+    fn into_start_key(self) -> HashMap<String, AttributeValue> {
+        let mut start_key = HashMap::new();
+        start_key.insert(String::from("PK"), AttributeValue::S(self.pk));
+        start_key.insert(String::from("SK"), AttributeValue::S(self.sk));
+        start_key
+    }
+}
+
 impl TryFrom<&str> for DynamoCursor {
     type Error = DynamoError;
 
@@ -633,21 +571,6 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
             pk: pk.to_owned(),
             sk: sk.to_owned(),
         })
-    }
-}
-
-impl DynamoCursor {
-    fn into_token(self) -> Result<String, DynamoError> {
-        let value = serde_json::to_vec(&self).map_err(|_| DynamoError::InvalidDynamoCursor)?;
-        let encoded_token = general_purpose::URL_SAFE.encode(value);
-        Ok(encoded_token)
-    }
-
-    fn into_start_key(self) -> HashMap<String, AttributeValue> {
-        let mut start_key = HashMap::new();
-        start_key.insert(String::from("PK"), AttributeValue::S(self.pk));
-        start_key.insert(String::from("SK"), AttributeValue::S(self.sk));
-        start_key
     }
 }
 

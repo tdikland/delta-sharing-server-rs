@@ -1,0 +1,12 @@
+---
+source: src/state.rs
+expression: response2
+---
+{
+  "items": [
+    {
+      "name": "sales_share",
+      "id": "3e979c79-6399-4dac-bcf8-54e268f48515"
+    }
+  ]
+}

@@ -17,9 +17,9 @@ use crate::reader::{SignedTableChanges, SignedTableData, TableMetadata, TableVer
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListSharesResponse {
-    items: Vec<Share>,
+    pub(crate) items: Vec<Share>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    next_page_token: Option<String>,
+    pub(crate) next_page_token: Option<String>,
 }
 
 impl From<List<Share>> for ListSharesResponse {

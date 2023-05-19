@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Share {
-    name: String,
-    id: Option<String>,
+    pub(crate) name: String,
+    pub(crate) id: Option<String>,
 }
 
 impl Share {
@@ -64,7 +64,7 @@ pub struct Table {
     name: String,
     storage_path: String,
     table_id: Option<String>,
-    table_format: Option<String>,
+    format: String,
 }
 
 impl Table {
@@ -75,12 +75,13 @@ impl Table {
         table_id: Option<String>,
         table_format: Option<String>,
     ) -> Self {
+        let format = table_format.unwrap_or(String::from("DELTA"));
         Self {
             schema,
             name,
             storage_path,
             table_id,
-            table_format,
+            format,
         }
     }
 
@@ -108,8 +109,8 @@ impl Table {
         self.table_id.as_ref()
     }
 
-    pub fn table_format(&self) -> Option<&String> {
-        self.table_format.as_ref()
+    pub fn format(&self) -> &str {
+        self.format.as_ref()
     }
 }
 

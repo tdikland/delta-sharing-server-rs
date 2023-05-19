@@ -27,7 +27,7 @@
 //! ```rust,no_run
 //! # use std::sync::Arc;
 //! use delta_sharing_server_rs::manager::dynamo::{DynamoConfig, DynamoTableManager};
-//! use delta_sharing_server_rs::state::ShareApiState;
+//! use delta_sharing_server_rs::state::SharingServerState;
 //! use delta_sharing_server_rs::router::get_router;
 //!
 //! #[tokio::main]
@@ -36,9 +36,9 @@
 //!     let client = aws_sdk_dynamodb::Client::new(&config);
 //!       
 //!     let table_manager_config = DynamoConfig::new("delta-sharing-store", "SK-PK-index");
-//!     let table_manager = Arc::new(DynamoTableManager::new(client, table_manager_config));
+//!     let table_manager = Arc::new(DynamoTableManager::new(client, "delta-sharing-store".to_owned(), "SK-PK-index".to_owned()));
 //!     
-//!     let state = ShareApiState::new(table_manager);
+//!     let state = SharingServerState::new(table_manager);
 //!     let app = get_router(Arc::new(state));
 //!     
 //!     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())

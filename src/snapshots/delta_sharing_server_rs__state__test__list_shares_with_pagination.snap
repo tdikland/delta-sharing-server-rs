@@ -1,0 +1,13 @@
+---
+source: src/state.rs
+expression: response1
+---
+{
+  "items": [
+    {
+      "name": "vaccine_share",
+      "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f"
+    }
+  ],
+  "nextPageToken": "continuation_token"
+}

@@ -6,6 +6,7 @@ pub mod dynamo;
 
 use crate::protocol::securables::{Schema, Share, Table};
 
+#[mockall::automock]
 #[async_trait]
 pub trait TableManager: Send + Sync {
     async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, TableManagerError>;
@@ -134,6 +135,10 @@ impl<T> List<T> {
             items,
             next_page_token,
         }
+    }
+
+    pub fn push(&mut self, item: T) {
+        self.items.push(item);
     }
 
     pub fn items(&self) -> &[T] {

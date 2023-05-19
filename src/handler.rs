@@ -11,12 +11,12 @@ use crate::{
         GetShareResponse, ListSchemasResponse, ListSharesResponse, ListTablesResponse,
         TableInfoResponse, TableVersionResponse,
     },
-    state::ShareApiState,
+    state::SharingServerState,
 };
 
 #[debug_handler]
 pub async fn list_shares(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     pagination: Pagination,
 ) -> Result<ListSharesResponse> {
     let list_shares = state.table_manager().list_shares(&pagination).await?;
@@ -26,7 +26,7 @@ pub async fn list_shares(
 
 #[debug_handler]
 pub async fn get_share(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     share_name: Path<String>,
 ) -> Result<GetShareResponse> {
     let get_share = state.table_manager().get_share(&share_name).await?;
@@ -36,7 +36,7 @@ pub async fn get_share(
 
 #[debug_handler]
 pub async fn list_schemas(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListSchemasResponse> {
@@ -50,7 +50,7 @@ pub async fn list_schemas(
 
 #[debug_handler]
 pub async fn list_tables_in_share(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
@@ -64,7 +64,7 @@ pub async fn list_tables_in_share(
 
 #[debug_handler]
 pub async fn list_tables_in_schema(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     Path((share_name, schema_name)): Path<(String, String)>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
@@ -78,7 +78,7 @@ pub async fn list_tables_in_schema(
 
 #[debug_handler]
 pub async fn get_table_version(
-    state: State<Arc<ShareApiState>>,
+    state: State<Arc<SharingServerState>>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     version: TableVersion,
 ) -> Result<TableVersionResponse> {
@@ -104,7 +104,7 @@ pub async fn get_table_version(
 
 #[debug_handler]
 pub async fn get_table_metadata(
-    State(state): State<Arc<ShareApiState>>,
+    State(state): State<Arc<SharingServerState>>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> Result<TableInfoResponse> {
     let table = state
@@ -124,7 +124,7 @@ pub async fn get_table_metadata(
 
 #[debug_handler]
 pub async fn get_table_data(
-    State(state): State<Arc<ShareApiState>>,
+    State(state): State<Arc<SharingServerState>>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     _predicates: TableDataPredicates,
 ) -> Result<TableInfoResponse> {
@@ -150,9 +150,11 @@ pub async fn get_table_data(
 
 #[debug_handler]
 pub async fn get_table_changes(
-    State(_state): State<Arc<ShareApiState>>,
+    State(_state): State<Arc<SharingServerState>>,
     Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
     _version_range: TableChangePredicates,
 ) -> Result<TableInfoResponse> {
     return Err(ServerError::Other);
 }
+
+
