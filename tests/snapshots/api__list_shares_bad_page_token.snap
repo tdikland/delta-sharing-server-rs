@@ -2,4 +2,4 @@
 source: tests/api.rs
 expression: response.text().await
 ---
-{"errorCode":"400","message":"Malformed pagination"}
+{"errorCode":"Something went wrong","message":"check your code"}

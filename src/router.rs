@@ -7,7 +7,7 @@ use axum::{
 
 use crate::{handler, state::SharingServerState};
 
-pub fn get_router(state: Arc<SharingServerState>) -> Router {
+pub fn build_sharing_server_router(state: Arc<SharingServerState>) -> Router {
     Router::new()
         .route("/shares", get(handler::list_shares))
         .route("/shares/:share", get(handler::get_share))

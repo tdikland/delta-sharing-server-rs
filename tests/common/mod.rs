@@ -9,7 +9,7 @@ use axum::Server;
 use bytes::Bytes;
 use delta_sharing_server_rs::manager::{dynamo::DynamoConfig, dynamo::DynamoTableManager};
 use delta_sharing_server_rs::reader::delta::DeltaReader;
-use delta_sharing_server_rs::router::get_router;
+use delta_sharing_server_rs::router::build_sharing_server_router;
 use delta_sharing_server_rs::signer::s3::S3UrlSigner;
 use delta_sharing_server_rs::state::SharingServerState;
 use std::net::{SocketAddr, TcpListener};
@@ -38,7 +38,7 @@ impl TestClient {
         let s3_signer = S3UrlSigner::new(aws_sdk_s3::Client::new(&config));
         state.add_url_signer("s3", Arc::new(s3_signer));
 
-        let app = get_router(Arc::new(state));
+        let app = build_sharing_server_router(Arc::new(state));
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Could not bind ephemeral socket");
         let addr = listener.local_addr().unwrap();

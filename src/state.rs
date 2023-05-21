@@ -182,8 +182,6 @@ impl SharingServerState {
 
 #[cfg(test)]
 mod test {
-    use std::hash::Hash;
-
     use super::*;
     use crate::{
         manager::{List, MockTableManager, TableManagerError},
@@ -224,7 +222,6 @@ mod test {
     #[tokio::test]
     async fn list_shares_with_pagination() {
         let mut mock_table_manager = MockTableManager::new();
-        // Get 1 item with continuation token
         mock_table_manager
             .expect_list_shares()
             .with(eq(ListCursor::new(None, None)))
@@ -237,7 +234,6 @@ mod test {
                 Ok(shares)
             });
 
-        // Get last item with no continuation token
         mock_table_manager
             .expect_list_shares()
             .with(eq(ListCursor::new(

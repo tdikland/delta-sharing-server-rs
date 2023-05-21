@@ -11,6 +11,7 @@ pub struct Protocol {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct FileFormat {
     pub provider: String,
 }
@@ -83,6 +84,7 @@ impl DataFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum ChangeFile {
     Add,
     Cdf,
@@ -96,4 +98,5 @@ impl ChangeFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SignedChangeFile {}

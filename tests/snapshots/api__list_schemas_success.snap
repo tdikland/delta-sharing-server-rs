@@ -2,4 +2,4 @@
 source: tests/api.rs
 expression: response.text().await
 ---
-{"items":[{"share":{"name":"share1","id":"share1_id"},"name":"schema1"}]}
+{"items":[{"name":"schema1","share":"share1"}]}
