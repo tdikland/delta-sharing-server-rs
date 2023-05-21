@@ -12,6 +12,12 @@ use super::{
 
 pub struct DeltaReader;
 
+impl DeltaReader {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 #[async_trait]
 impl TableReader for DeltaReader {
     async fn get_table_version(

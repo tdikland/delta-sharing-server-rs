@@ -1,11 +1,12 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, FromRow)]
 pub struct Share {
-    pub(crate) name: String,
-    pub(crate) id: Option<String>,
+    name: String,
+    id: Option<String>,
 }
 
 impl Share {

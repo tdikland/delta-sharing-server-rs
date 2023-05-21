@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, ops::Deref};
 
 pub mod dynamo;
-mod mysql;
-mod postgres;
+pub mod mysql;
+pub mod postgres;
 
 use crate::protocol::securables::{Schema, Share, Table};
 

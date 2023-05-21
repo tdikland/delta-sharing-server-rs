@@ -203,14 +203,14 @@ mod test {
             .once()
             .returning(|_| {
                 let mut shares = List::new(vec![], Some("continuation_token".to_owned()));
-                shares.push(Share {
-                    name: "vaccine_share".to_owned(),
-                    id: Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                });
-                shares.push(Share {
-                    name: "sales_share".to_owned(),
-                    id: Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
-                });
+                shares.push(Share::new(
+                    "vaccine_share".to_owned(),
+                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()))
+                );
+                shares.push(Share::new(
+                    "sales_share".to_owned(),
+                    Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
+                ));
                 Ok(shares)
             });
 
@@ -227,10 +227,8 @@ mod test {
             .with(eq(ListCursor::new(None, None)))
             .returning(|_| {
                 let mut shares = List::new(vec![], Some("continuation_token".to_owned()));
-                shares.push(Share {
-                    name: "vaccine_share".to_owned(),
-                    id: Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                });
+                let share = Share::new("vaccine_share".to_owned(),Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()) );
+                shares.push(share);
                 Ok(shares)
             });
 
@@ -242,10 +240,10 @@ mod test {
             )))
             .returning(|_| {
                 let mut shares = List::new(vec![], None);
-                shares.push(Share {
-                    name: "sales_share".to_owned(),
-                    id: Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
-                });
+                shares.push(Share::new(
+                    "sales_share".to_owned(),
+                    Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
+                ));
                 Ok(shares)
             });
 

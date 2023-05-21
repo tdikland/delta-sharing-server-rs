@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS share (
+    id UUID PRIMARY KEY,
+    name VARCHAR NOT NULL
+);
