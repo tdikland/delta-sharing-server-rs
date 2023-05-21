@@ -9,6 +9,7 @@ use crate::{
 
 pub mod delta;
 
+#[mockall::automock]
 #[async_trait]
 pub trait TableReader: Send + Sync {
     async fn get_table_version(
@@ -26,8 +27,8 @@ pub trait TableReader: Send + Sync {
         &self,
         storage_path: &str,
         version: u64,
-        limit: u64,
-        predicates: &str,
+        limit: Option<u64>,
+        predicates: Option<String>,
     ) -> Result<TableData, TableReaderError>;
 
     async fn get_table_changes(
@@ -42,7 +43,7 @@ pub enum TableReaderError {
     Other,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Version {
     Latest,
     Timestamp(DateTime<Utc>),

@@ -155,6 +155,7 @@ impl IntoResponse for ListTablesResponse {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct TableVersionResponse {
     version: u64,
 }
@@ -172,14 +173,16 @@ impl IntoResponse for TableVersionResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum JsonWrapper {
     Protocol(Protocol),
+    #[serde(rename = "metaData")]
     Metadata(Metadata),
     File(SignedDataFile),
     Add(SignedChangeFile),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TableInfoResponse {
     version: TableVersion,
     lines: Vec<JsonWrapper>,

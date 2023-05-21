@@ -5,27 +5,13 @@ use crate::{manager::TableManagerError, reader::TableReaderError};
 
 #[derive(Debug, PartialEq)]
 pub enum ServerError {
-    InvalidPagination {
-        reason: String,
-    },
+    InvalidPagination { reason: String },
     InvalidTableStartingTimestamp,
-    InvalidTableVersionRange {
-        reason: String,
-    },
-    UnsupportedTableFormat {
-        format: String,
-    },
-    UnsupportedTableStorage {
-        storage: String,
-    },
-    ShareNotFound {
-        name: String,
-    },
-    TableNotFound {
-        share: String,
-        schema: String,
-        name: String,
-    },
+    InvalidTableVersionRange { reason: String },
+    UnsupportedTableFormat { format: String },
+    UnsupportedTableStorage { storage: String },
+    ShareNotFound { name: String },
+    TableNotFound { name: String },
     MalformedNextPageToken,
     Other,
 }
@@ -37,13 +23,9 @@ impl ServerError {
                 error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
                 message: format!("share `{}` not found", name),
             },
-            ServerError::TableNotFound {
-                share,
-                schema,
-                name,
-            } => ErrorResponse {
+            ServerError::TableNotFound { name } => ErrorResponse {
                 error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
-                message: format!("table `{}.{}.{}` not found", share, schema, name),
+                message: format!("table `{}` not found", name),
             },
             ServerError::InvalidPagination { .. } => ErrorResponse {
                 error_code: String::from("400"),
@@ -67,9 +49,7 @@ impl From<TableManagerError> for ServerError {
                 schema_name,
                 table_name,
             } => Self::TableNotFound {
-                share: share_name,
-                schema: schema_name,
-                name: table_name,
+                name: format!("{}.{}.{}", share_name, schema_name, table_name),
             },
             TableManagerError::ShareNotFound { share_name } => {
                 Self::ShareNotFound { name: share_name }

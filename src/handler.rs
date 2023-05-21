@@ -138,7 +138,7 @@ pub async fn get_table_data(
         .ok_or(ServerError::UnsupportedTableFormat {
             format: table.format().to_owned(),
         })?
-        .get_table_data(table.storage_path(), 0, 0, "")
+        .get_table_data(table.storage_path(), 0, None, None)
         .await?;
 
     let signer = state

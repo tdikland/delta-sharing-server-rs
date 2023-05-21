@@ -68,8 +68,8 @@ impl TableReader for DeltaReader {
         &self,
         storage_path: &str,
         _version: u64,
-        _limit: u64,
-        _predicates: &str,
+        _limit: Option<u64>,
+        _predicates: Option<String>,
     ) -> Result<TableData, TableReaderError> {
         let delta_table = deltalake::open_table(storage_path).await?;
 
