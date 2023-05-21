@@ -54,7 +54,7 @@ pub enum TableManagerError {
         schema_name: String,
         table_name: String,
     },
-    InvalidListCursor,
+    MalformedContinuationToken,
     ConnectionError,
     Other {
         reason: String,
@@ -84,7 +84,7 @@ impl Display for TableManagerError {
                 "table `{}.{}.{}` could not be found",
                 share_name, schema_name, table_name
             ),
-            TableManagerError::InvalidListCursor => {
+            TableManagerError::MalformedContinuationToken => {
                 write!(f, "the provided `page_token` is malformed")
             }
             TableManagerError::ConnectionError => todo!(),

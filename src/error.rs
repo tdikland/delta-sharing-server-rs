@@ -26,6 +26,7 @@ pub enum ServerError {
         schema: String,
         name: String,
     },
+    MalformedNextPageToken,
     Other,
 }
 
@@ -73,9 +74,7 @@ impl From<TableManagerError> for ServerError {
             TableManagerError::ShareNotFound { share_name } => {
                 Self::ShareNotFound { name: share_name }
             }
-            TableManagerError::InvalidListCursor => ServerError::InvalidPagination {
-                reason: String::from(""),
-            },
+            TableManagerError::MalformedContinuationToken => ServerError::MalformedNextPageToken,
             // TableManagerError::InternalError => Self::ShareStore,
             // TableManagerError::Other => Self::Other,
             // TableManagerError::MalformedListCursor => Self::InvalidPagination {

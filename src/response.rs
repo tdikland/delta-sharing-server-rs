@@ -17,9 +17,9 @@ use crate::reader::{SignedTableChanges, SignedTableData, TableMetadata, TableVer
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListSharesResponse {
-    pub(crate) items: Vec<Share>,
+    items: Vec<Share>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) next_page_token: Option<String>,
+    next_page_token: Option<String>,
 }
 
 impl From<List<Share>> for ListSharesResponse {
@@ -67,8 +67,15 @@ impl IntoResponse for GetShareResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct SchemaItem {
+    name: String,
+    share: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListSchemasResponse {
-    items: Vec<Schema>,
+    items: Vec<SchemaItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     next_page_token: Option<String>,
 }
@@ -76,7 +83,14 @@ pub struct ListSchemasResponse {
 impl From<List<Schema>> for ListSchemasResponse {
     fn from(value: List<Schema>) -> Self {
         Self {
-            items: value.items().to_vec(),
+            items: value
+                .items()
+                .iter()
+                .map(|item| SchemaItem {
+                    name: item.name().to_owned(),
+                    share: item.share_name().to_owned(),
+                })
+                .collect(),
             next_page_token: value.next_page_token().cloned(),
         }
     }
@@ -95,7 +109,7 @@ impl IntoResponse for ListSchemasResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TableInfo {
+struct TableItem {
     name: String,
     schema: String,
     share: String,
@@ -106,7 +120,7 @@ pub struct TableInfo {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListTablesResponse {
-    items: Vec<TableInfo>,
+    items: Vec<TableItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     next_page_token: Option<String>,
 }
@@ -117,7 +131,7 @@ impl From<List<Table>> for ListTablesResponse {
             items: value
                 .items()
                 .iter()
-                .map(|t| TableInfo {
+                .map(|t| TableItem {
                     name: t.name().to_owned(),
                     schema: t.schema_name().to_owned(),
                     share: t.share_name().to_owned(),

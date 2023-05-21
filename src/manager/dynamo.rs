@@ -577,7 +577,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
 impl From<DynamoError> for TableManagerError {
     fn from(value: DynamoError) -> Self {
         match value {
-            DynamoError::InvalidListCursor => TableManagerError::InvalidListCursor,
+            DynamoError::InvalidListCursor => TableManagerError::MalformedContinuationToken,
             DynamoError::ShareNotFound { share } => {
                 TableManagerError::ShareNotFound { share_name: share }
             }

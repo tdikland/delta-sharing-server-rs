@@ -185,13 +185,13 @@ mod test {
     use super::*;
     use crate::{
         manager::{List, MockTableManager, TableManagerError},
-        protocol::securables::Share,
+        protocol::securables::{Schema, Share, Table},
     };
     use insta::assert_json_snapshot;
     use mockall::predicate::eq;
 
     #[tokio::test]
-    async fn test_list_shares() {
+    async fn list_shares() {
         let mut mock_table_manager = MockTableManager::new();
         mock_table_manager
             .expect_list_shares()
@@ -215,7 +215,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_list_shares_with_pagination() {
+    async fn list_shares_with_pagination() {
         let mut mock_table_manager = MockTableManager::new();
         // Get 1 item with continuation token
         mock_table_manager
@@ -261,7 +261,23 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_share() {
+    async fn list_shares_malformed_token() {
+        let mut mock_table_manager = MockTableManager::new();
+        mock_table_manager
+            .expect_list_shares()
+            .once()
+            .returning(|_| Err(TableManagerError::MalformedContinuationToken));
+
+        let state = SharingServerState::new(Arc::new(mock_table_manager));
+        let response = state
+            .list_shares(&ListCursor::new(None, Some("invalid_token".to_owned())))
+            .await;
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err(), ServerError::MalformedNextPageToken);
+    }
+
+    #[tokio::test]
+    async fn get_share() {
         let mut mock_table_manager = MockTableManager::new();
         mock_table_manager
             .expect_get_share()
@@ -280,7 +296,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_share_not_found() {
+    async fn get_share_not_found() {
         let mut mock_table_manager = MockTableManager::new();
         mock_table_manager
             .expect_get_share()
@@ -301,5 +317,110 @@ mod test {
                 name: "vaccine_share".to_owned()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn list_schemas() {
+        let mut mock_table_manager = MockTableManager::new();
+        mock_table_manager
+            .expect_list_schemas()
+            .with(eq("vaccine_share"), eq(ListCursor::default()))
+            .once()
+            .returning(|_, _| {
+                let mut schemas = List::new(vec![], Some("continuation_token".to_owned()));
+                let share = Share::new("vaccine_share".to_owned(), None);
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                schemas.push(schema);
+                Ok(schemas)
+            });
+
+        let state = SharingServerState::new(Arc::new(mock_table_manager));
+        let response = state
+            .list_schemas("vaccine_share", &ListCursor::default())
+            .await
+            .unwrap();
+        assert_json_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn list_tables_in_share() {
+        let mut mock_table_manager = MockTableManager::new();
+        mock_table_manager
+            .expect_list_tables_in_share()
+            .with(eq("vaccine_share"), eq(ListCursor::default()))
+            .once()
+            .returning(|_, _| {
+                let mut tables = List::new(vec![], Some("next_page_token".to_owned()));
+                let share = Share::new(
+                    "vaccine_share".to_owned(),
+                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
+                );
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                tables.push(Table::new(
+                    schema.clone(),
+                    "vaccine_ingredients".to_owned(),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
+                    Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
+                    None,
+                ));
+                tables.push(Table::new(
+                    schema.clone(),
+                    "vaccine_patients".to_owned(),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
+                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    None,
+                ));
+                Ok(tables)
+            });
+
+        let state = SharingServerState::new(Arc::new(mock_table_manager));
+        let response = state
+            .list_tables_in_share("vaccine_share", &ListCursor::default())
+            .await
+            .unwrap();
+        assert_json_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn list_tables_in_schema() {
+        let mut mock_table_manager = MockTableManager::new();
+        mock_table_manager
+            .expect_list_tables_in_schema()
+            .with(
+                eq("vaccine_share"),
+                eq("acme_vaccine_data"),
+                eq(ListCursor::default()),
+            )
+            .once()
+            .returning(|_, _, _| {
+                let mut tables = List::new(vec![], Some("next_page_token".to_owned()));
+                let share = Share::new(
+                    "vaccine_share".to_owned(),
+                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
+                );
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                tables.push(Table::new(
+                    schema.clone(),
+                    "vaccine_ingredients".to_owned(),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
+                    Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
+                    None,
+                ));
+                tables.push(Table::new(
+                    schema.clone(),
+                    "vaccine_patients".to_owned(),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
+                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    None,
+                ));
+                Ok(tables)
+            });
+
+        let state = SharingServerState::new(Arc::new(mock_table_manager));
+        let response = state
+            .list_tables_in_schema("vaccine_share", "acme_vaccine_data", &ListCursor::default())
+            .await
+            .unwrap();
+        assert_json_snapshot!(response);
     }
 }
