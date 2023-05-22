@@ -8,7 +8,7 @@ use axum::http::{
 use axum::Server;
 use bytes::Bytes;
 use delta_sharing_server_rs::manager::{dynamo::DynamoConfig, dynamo::DynamoTableManager};
-use delta_sharing_server_rs::reader::delta::DeltaReader;
+use delta_sharing_server_rs::reader::delta::DeltaTableReader;
 use delta_sharing_server_rs::router::build_sharing_server_router;
 use delta_sharing_server_rs::signer::s3::S3UrlSigner;
 use delta_sharing_server_rs::state::SharingServerState;
@@ -34,7 +34,7 @@ impl TestClient {
         ));
         let mut state = SharingServerState::new(table_manager);
 
-        state.add_table_reader("DELTA", Arc::new(DeltaReader));
+        state.add_table_reader("DELTA", Arc::new(DeltaTableReader));
         let s3_signer = S3UrlSigner::new(aws_sdk_s3::Client::new(&config));
         state.add_url_signer("s3", Arc::new(s3_signer));
 

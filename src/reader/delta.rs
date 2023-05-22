@@ -10,16 +10,16 @@ use super::{
     VersionRange,
 };
 
-pub struct DeltaReader;
+pub struct DeltaTableReader;
 
-impl DeltaReader {
+impl DeltaTableReader {
     pub fn new() -> Self {
         Self {}
     }
 }
 
 #[async_trait]
-impl TableReader for DeltaReader {
+impl TableReader for DeltaTableReader {
     async fn get_table_version(
         &self,
         storage_path: &str,

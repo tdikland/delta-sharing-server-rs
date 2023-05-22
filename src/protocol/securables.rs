@@ -3,7 +3,7 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, FromRow)]
 pub struct Share {
     name: String,
     id: Option<String>,
@@ -29,7 +29,7 @@ impl Display for Share {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
 pub struct Schema {
     share: Share,
     name: String,
@@ -59,7 +59,7 @@ impl Display for Schema {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
 pub struct Table {
     schema: Schema,
     name: String,

@@ -27,7 +27,7 @@
 //! ```rust,no_run
 //! # use std::sync::Arc;
 //! use delta_sharing_server_rs::manager::dynamo::DynamoTableManager;
-//! use delta_sharing_server_rs::reader::delta::DeltaReader;
+//! use delta_sharing_server_rs::reader::delta::DeltaTableReader;
 //! use delta_sharing_server_rs::signer::s3::S3UrlSigner;
 //! use delta_sharing_server_rs::router::build_sharing_server_router;
 //! use delta_sharing_server_rs::state::SharingServerState;
@@ -40,7 +40,7 @@
 //!     let table_manager = Arc::new(DynamoTableManager::new(ddb_client, "delta-sharing-table".to_owned(), "GSI1".to_owned()));
 //!         
 //!     // configure table readers
-//!     let delta_table_reader = Arc::new(DeltaReader::new());
+//!     let delta_table_reader = Arc::new(DeltaTableReader::new());
 //!
 //!     // configure file url signers
 //!     let s3_client = aws_sdk_s3::Client::new(&config);
