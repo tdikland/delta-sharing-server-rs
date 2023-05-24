@@ -130,4 +130,19 @@ async fn list_tables() {
         .await
         .unwrap();
     assert_eq!(tables_in_share.len(), 6);
+
+    let tables_in_schema = table_manager
+        .list_tables_in_schema("share_1", "schema_1", &ListCursor::default())
+        .await
+        .unwrap();
+    assert_eq!(tables_in_schema.len(), 4);
+
+    let table = table_manager
+        .get_table("share_1", "schema_1", "table_1")
+        .await
+        .unwrap();
+    assert_eq!(table.name(), "table_1");
+    assert_eq!(table.share_name(), "share_1");
+    assert_eq!(table.schema_name(), "schema_1");
+    assert_eq!(table.storage_path(), "s3://bucket/table_1");
 }
