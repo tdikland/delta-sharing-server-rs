@@ -330,7 +330,7 @@ mod test {
             .returning(|_, _| {
                 let mut schemas = List::new(vec![], Some("continuation_token".to_owned()));
                 let share = Share::new("vaccine_share".to_owned(), None);
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 schemas.push(schema);
                 Ok(schemas)
             });
@@ -356,7 +356,7 @@ mod test {
                     "vaccine_share".to_owned(),
                     Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_ingredients".to_owned(),
@@ -399,7 +399,7 @@ mod test {
                     "vaccine_share".to_owned(),
                     Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_ingredients".to_owned(),
@@ -441,7 +441,7 @@ mod test {
                     "vaccine_share".to_owned(),
                     Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),
@@ -557,7 +557,7 @@ mod test {
                     "vaccine_share".to_owned(),
                     Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),
@@ -619,7 +619,7 @@ mod test {
                     "vaccine_share".to_owned(),
                     Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned());
+                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),

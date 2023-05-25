@@ -132,7 +132,8 @@ fn build_share(share_number: &str) -> Share {
 fn build_schema(share_number: &str, schema_number: &str) -> Schema {
     let share = build_share(share_number);
     let schema_name = format!("schema_{}", schema_number);
-    Schema::new(share, schema_name)
+    let id = format!("schema_id_{}", schema_number);
+    Schema::new(share, schema_name, Some(id))
 }
 
 fn build_table(share_number: &str, schema_number: &str, table_number: &str) -> Table {

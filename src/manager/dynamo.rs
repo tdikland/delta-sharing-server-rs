@@ -480,7 +480,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for Schema {
         let share_id = item.get("share_id").and_then(|v| v.as_s().ok().cloned());
         let share = Share::new(key.share_name().to_owned(), share_id);
         let schema_name = key.schema_name().ok_or(DynamoError::InvalidSchemaItem)?;
-        Ok(Schema::new(share, schema_name.to_owned()))
+        Ok(Schema::new(share, schema_name.to_owned(), None))
     }
 }
 
@@ -506,7 +506,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for Table {
         let share_id = item.get("share_id").and_then(|v| v.as_s().ok().cloned());
         let share = Share::new(key.share_name().to_owned(), share_id);
         let schema_name = key.schema_name().ok_or(DynamoError::InvalidSchemaItem)?;
-        let schema = Schema::new(share, schema_name.to_owned());
+        let schema = Schema::new(share, schema_name.to_owned(), None);
         let table_name = key.table_name().ok_or(DynamoError::InvalidTableItem)?;
         Ok(Table::new(
             schema,

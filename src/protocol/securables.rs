@@ -33,11 +33,12 @@ impl Display for Share {
 pub struct Schema {
     share: Share,
     name: String,
+    id: Option<String>
 }
 
 impl Schema {
-    pub fn new(share: Share, name: String) -> Self {
-        Self { share, name }
+    pub fn new(share: Share, name: String, id: Option<String>) -> Self {
+        Self { share, name, id: None }
     }
 
     pub fn share_name(&self) -> &str {
@@ -50,6 +51,10 @@ impl Schema {
 
     pub fn name(&self) -> &str {
         self.name.as_ref()
+    }
+
+    pub fn id(&self) -> Option<&String> {
+        self.id.as_ref()
     }
 }
 

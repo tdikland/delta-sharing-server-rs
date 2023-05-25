@@ -102,7 +102,7 @@ async fn setup_tables(pool: &PgPool) {
 #[tokio::test]
 async fn list_tables() {
     let table_manager =
-        PostgresTableManager::new("postgres://postgres:postgrespw@localhost:32770").await;
+        PostgresTableManager::new("postgres://postgres:postgrespw@localhost:55000").await;
     setup_tables(table_manager.pool()).await;
 
     let list_shares = table_manager
