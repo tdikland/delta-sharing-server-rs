@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 use async_trait::async_trait;
 use sqlx::{
     postgres::{PgPoolOptions, PgRow},
@@ -31,7 +29,7 @@ impl PostgresTableManager {
 
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
         let share_id = Uuid::new_v4();
-        sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2)")
+        sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2);")
             .bind(share_id)
             .bind(share_name)
             .execute(&self.pool)
@@ -43,17 +41,14 @@ impl PostgresTableManager {
         ))
     }
 
-    pub async fn select_share_by_name(
-        &self,
-        share_name: &str,
-    ) -> Result<Option<Share>, sqlx::Error> {
+    async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT 
-                name AS share_name, 
-                id::text AS share_id
+                id::text AS share_id,
+                name AS share_name
             FROM share
-            WHERE name = $1
+            WHERE name = $1;
             "#,
         )
         .bind(share_name)
@@ -63,16 +58,16 @@ impl PostgresTableManager {
         .transpose()
     }
 
-    pub async fn select_shares(&self, cursor: &PostgresCursor) -> Result<Vec<Share>, sqlx::Error> {
+    async fn select_shares(&self, cursor: &PostgresCursor) -> Result<Vec<Share>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT 
-                name AS share_name, 
-                id::text AS share_id
+                id::text AS share_id,
+                name AS share_name
             FROM share
             WHERE id > $1
             ORDER BY id
-            LIMIT $2
+            LIMIT $2;
             "#,
         )
         .bind(cursor.last_seen_id())
@@ -93,7 +88,7 @@ impl PostgresTableManager {
         sqlx::query(
             r#"
             INSERT INTO schema (id, name, share_id) 
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3);
             "#,
         )
         .bind(schema_id)
@@ -102,10 +97,14 @@ impl PostgresTableManager {
         .execute(&self.pool)
         .await?;
 
-        Ok(Schema::new(share.clone(), schema_name.to_string(), Some(schema_id.to_string())))
+        Ok(Schema::new(
+            share.clone(),
+            schema_name.to_string(),
+            Some(schema_id.to_string()),
+        ))
     }
 
-    pub async fn select_schemas_by_share_name(
+    async fn select_schemas_by_share_name(
         &self,
         share_name: &str,
         cursor: &PostgresCursor,
@@ -113,14 +112,15 @@ impl PostgresTableManager {
         sqlx::query(
             r#"
             SELECT 
-                "schema".name AS schema_name,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                share.id::text AS share_id
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name
             FROM share
             LEFT JOIN "schema" ON "schema".share_id = share.id
             WHERE share.name = $1 AND "schema".id > $2
             ORDER BY "schema".id
-            LIMIT $3
+            LIMIT $3;
             "#,
         )
         .bind(share_name)
@@ -133,39 +133,60 @@ impl PostgresTableManager {
         .collect()
     }
 
-    async fn insert_table(&self, schema: &Schema, table_name: &str, storage_path: &str, storage_format: Option<&String>) -> Result<Table, sqlx::Error> {
+    // TODO: remove unwrap
+    pub async fn insert_table(
+        &self,
+        schema: &Schema,
+        table_name: &str,
+        storage_path: &str,
+        storage_format: Option<&String>,
+    ) -> Result<Table, sqlx::Error> {
         let uuid = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO \"table\" (id, name, schema_id, storage_path, storage_format) VALUES ($1, $2, $3, $4, $5)",
+            r#"
+            INSERT INTO "table" (id, name, schema_id, storage_path, storage_format) 
+            VALUES ($1, $2, $3, $4, $5);
+            "#,
         )
         .bind(uuid)
         .bind(table_name)
-        .bind(schema.id().unwrap()) // TODO
+        .bind(schema.id().unwrap())
         .bind(storage_path)
         .bind(storage_format)
         .execute(&self.pool)
         .await?;
 
-        Ok(Table::new(schema.clone(), table_name.to_owned(), storage_path.to_owned(), Some(uuid.to_string()), storage_format.cloned()))
+        Ok(Table::new(
+            schema.clone(),
+            table_name.to_owned(),
+            storage_path.to_owned(),
+            Some(uuid.to_string()),
+            storage_format.cloned(),
+        ))
     }
 
-    async fn select_tables_by_share(&self, share_name: &str, cursor: &PostgresCursor) -> Result<Vec<Table>, sqlx::Error> {
+    async fn select_tables_by_share(
+        &self,
+        share_name: &str,
+        cursor: &PostgresCursor,
+    ) -> Result<Vec<Table>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT
-                share.name AS share_name,
                 share.id::text AS share_id,
+                share.name AS share_name,
+                "schema".id::text AS schema_id,
                 "schema".name AS schema_name,
-                "table".name AS table_name,
                 "table".id::text AS table_id,
+                "table".name AS table_name,
                 "table".storage_path AS storage_path,
                 "table".storage_format AS storage_format
             FROM share
             LEFT JOIN "schema" ON "schema".share_id = share.id
             LEFT JOIN "table" ON "table".schema_id = "schema".id
             WHERE share.name = $1 AND "table".id > $2
-            ORDER BY table_id
-            LIMIT $3
+            ORDER BY "table".id
+            LIMIT $3;
             "#,
         )
         .bind(share_name)
@@ -178,23 +199,29 @@ impl PostgresTableManager {
         .collect()
     }
 
-    async fn select_tables_by_schema(&self, share_name: &str, schema_name: &str, cursor: &PostgresCursor) -> Result<Vec<Table>, sqlx::Error> {
+    async fn select_tables_by_schema(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        cursor: &PostgresCursor,
+    ) -> Result<Vec<Table>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT
-                share.name AS share_name,
                 share.id::text AS share_id,
+                share.name AS share_name,
+                "schema".id::text AS schema_id,
                 "schema".name AS schema_name,
-                "table".name AS table_name,
                 "table".id::text AS table_id,
+                "table".name AS table_name,
                 "table".storage_path AS storage_path,
                 "table".storage_format AS storage_format
             FROM share
             LEFT JOIN "schema" ON "schema".share_id = share.id
             LEFT JOIN "table" ON "table".schema_id = "schema".id
             WHERE share.name = $1 AND "schema".name = $2 AND "table".id > $3
-            ORDER BY table_id
-            LIMIT $4
+            ORDER BY "table".id
+            LIMIT $4;
             "#,
         )
         .bind(share_name)
@@ -208,22 +235,27 @@ impl PostgresTableManager {
         .collect()
     }
 
-    async fn select_table_by_name(&self, share_name: &str, schema_name: &str, table_name: &str) -> Result<Option<Table>, sqlx::Error> {
+    async fn select_table_by_name(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<Option<Table>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT
-                share.name AS share_name,
                 share.id::text AS share_id,
+                share.name AS share_name,
+                "schema".id::text AS schema_id,
                 "schema".name AS schema_name,
-                "table".name AS table_name,
                 "table".id::text AS table_id,
+                "table".name AS table_name,
                 "table".storage_path AS storage_path,
                 "table".storage_format AS storage_format
             FROM share
             LEFT JOIN "schema" ON "schema".share_id = share.id
             LEFT JOIN "table" ON "table".schema_id = "schema".id
-            WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3
-            ORDER BY table_id
+            WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3;
             "#,
         )
         .bind(share_name)
@@ -236,7 +268,7 @@ impl PostgresTableManager {
     }
 }
 
-pub struct PostgresCursor {
+struct PostgresCursor {
     last_seen_id: Option<Uuid>,
     limit: Option<u32>,
 }
@@ -265,15 +297,14 @@ impl PostgresCursor {
 }
 
 impl TryFrom<ListCursor> for PostgresCursor {
-    type Error = Infallible;
-    // TODO: use Option::map, set limit to maxResults
-    fn try_from(c: ListCursor) -> Result<Self, Self::Error> {
-        let last_seen_id = match c.page_token() {
-            Some(token) => Some(Uuid::parse_str(token).unwrap()),
-            None => None,
-        };
-        let cursor = PostgresCursor::new(last_seen_id, None);
-        Ok(cursor)
+    type Error = &'static str;
+    fn try_from(cursor: ListCursor) -> Result<Self, Self::Error> {
+        let last_seen_id = cursor
+            .page_token()
+            .map(|token| Uuid::parse_str(token).map_err(|_| "invalid page token"))
+            .transpose()?;
+        let pg_cursor = PostgresCursor::new(last_seen_id, cursor.max_results());
+        Ok(pg_cursor)
     }
 }
 
@@ -328,72 +359,45 @@ impl TryFrom<PgRow> for Table {
 #[async_trait]
 impl TableManager for PostgresTableManager {
     async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, TableManagerError> {
-        let c: PostgresCursor = PostgresCursor::try_from(cursor.clone()).unwrap(); // TODO: fix unwrap
-        let shares = self.select_shares(&c).await?;
-        let last_seen_id = shares.iter().last().and_then(|s| {s.id().cloned()});
-        Ok(List::new(shares, last_seen_id))
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+        let shares = self.select_shares(&pg_cursor).await?;
+
+        let next_page_token = if shares.len() == pg_cursor.limit() as usize {
+            shares.iter().last().and_then(|s| s.id().cloned())
+        } else {
+            None
+        };
+
+        Ok(List::new(shares, next_page_token))
     }
 
     async fn get_share(&self, share_name: &str) -> Result<Share, TableManagerError> {
-        self.select_share_by_name(share_name).await?
-
-        // let share: Option<Share> = sqlx::query(
-        //     r#"
-        //     SELECT name, id::text
-        //     FROM share
-        //     WHERE name = $1
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .fetch_optional(&self.pool)
-        // .await?
-        // .map(|row| {
-        //     let name: String = row.get(0);
-        //     let id: String = row.get(1);
-        //     Share::new(name, Some(id))
-        // });
-
-        // match share {
-        //     Some(share) => Ok(share),
-        //     None => Err(TableManagerError::ShareNotFound {
-        //         share_name: share_name.to_string(),
-        //     }),
-        // }
+        self.select_share_by_name(share_name)
+            .await?
+            .ok_or(TableManagerError::ShareNotFound {
+                share_name: share_name.to_string(),
+            })
     }
 
     async fn list_schemas(
         &self,
         share_name: &str,
-        _cursor: &ListCursor,
+        cursor: &ListCursor,
     ) -> Result<List<Schema>, TableManagerError> {
-        let schemas: Vec<Schema> = sqlx::query(
-            r#"
-            SELECT 
-                "schema".name AS schema_name,
-                share.name AS share_name,
-                share.id::text AS share_id
-            FROM share
-            LEFT JOIN "schema" ON "schema".share_id = share.id
-            WHERE share.name = $1
-            ORDER BY schema_name
-            "#,
-        )
-        .bind(share_name)
-        .fetch_all(&self.pool)
-        .await
-        .map(|rows| {
-            rows.iter()
-                .map(|row| {
-                    let share_id = row.get("share_id");
-                    let share_name = row.get("share_name");
-                    let schema_name = row.get("schema_name");
-                    let share = Share::new(share_name, Some(share_id));
-                    Schema::new(share, schema_name, None)
-                })
-                .collect()
-        })?;
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+        let schemas = self
+            .select_schemas_by_share_name(share_name, &pg_cursor)
+            .await?;
 
-        Ok(List::new(schemas, None))
+        let next_page_token = if schemas.len() == pg_cursor.limit() as usize {
+            schemas.iter().last().and_then(|s| s.id().cloned())
+        } else {
+            None
+        };
+
+        Ok(List::new(schemas, next_page_token))
     }
 
     async fn list_tables_in_share(
@@ -401,51 +405,17 @@ impl TableManager for PostgresTableManager {
         share_name: &str,
         cursor: &ListCursor,
     ) -> Result<List<Table>, TableManagerError> {
-        let tables: Vec<Table> = sqlx::query(
-            r#"
-            SELECT
-                share.name AS share_name,
-                share.id::text AS share_id,
-                "schema".name AS schema_name,
-                "table".name AS table_name,
-                "table".id::text AS table_id,
-                "table".storage_path AS storage_path,
-                "table".storage_format AS storage_format
-            FROM share
-            LEFT JOIN "schema" ON "schema".share_id = share.id
-            LEFT JOIN "table" ON "table".schema_id = "schema".id
-            WHERE share.name = $1
-            ORDER BY table_id
-            "#,
-        )
-        .bind(share_name)
-        .fetch_all(&self.pool)
-        .await
-        .map(|rows| {
-            rows.iter()
-                .map(|row| {
-                    let share_name = row.get("share_name");
-                    let share_id = row.get("share_id");
-                    let schema_name = row.get("schema_name");
-                    let table_name = row.get("table_name");
-                    let table_id = row.get("table_id");
-                    let storage_path = row.get("storage_path");
-                    let storage_format = row.get("storage_format");
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+        let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
-                    let share = Share::new(share_name, Some(share_id));
-                    let schema = Schema::new(share, schema_name, None);
-                    Table::new(
-                        schema,
-                        table_name,
-                        storage_path,
-                        Some(table_id),
-                        storage_format,
-                    )
-                })
-                .collect::<Vec<Table>>()
-        })?;
+        let next_page_token = if tables.len() == pg_cursor.limit() as usize {
+            tables.iter().last().and_then(|s| s.table_id().cloned())
+        } else {
+            None
+        };
 
-        Ok(List::new(tables, None))
+        Ok(List::new(tables, next_page_token))
     }
 
     async fn list_tables_in_schema(
@@ -454,53 +424,19 @@ impl TableManager for PostgresTableManager {
         schema_name: &str,
         cursor: &ListCursor,
     ) -> Result<List<Table>, TableManagerError> {
-        let tables: Vec<Table> = sqlx::query(
-            r#"
-            SELECT
-                share.name AS share_name,
-                share.id::text AS share_id,
-                "schema".name AS schema_name,
-                "table".name AS table_name,
-                "table".id::text AS table_id,
-                "table".storage_path AS storage_path,
-                "table".storage_format AS storage_format
-            FROM share
-            LEFT JOIN "schema" ON "schema".share_id = share.id
-            LEFT JOIN "table" ON "table".schema_id = "schema".id
-            WHERE share.name = $1
-            AND "schema".name = $2
-            ORDER BY table_id
-            "#,
-        )
-        .bind(share_name)
-        .bind(schema_name)
-        .fetch_all(&self.pool)
-        .await
-        .map(|rows| {
-            rows.iter()
-                .map(|row| {
-                    let share_name = row.get("share_name");
-                    let share_id = row.get("share_id");
-                    let schema_name = row.get("schema_name");
-                    let table_name = row.get("table_name");
-                    let table_id = row.get("table_id");
-                    let storage_path = row.get("storage_path");
-                    let storage_format = row.get("storage_format");
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+        let tables = self
+            .select_tables_by_schema(share_name, schema_name, &pg_cursor)
+            .await?;
 
-                    let share = Share::new(share_name, Some(share_id));
-                    let schema = Schema::new(share, schema_name, None);
-                    Table::new(
-                        schema,
-                        table_name,
-                        storage_path,
-                        Some(table_id),
-                        storage_format,
-                    )
-                })
-                .collect::<Vec<Table>>()
-        })?;
+        let next_page_token = if tables.len() == pg_cursor.limit() as usize {
+            tables.iter().last().and_then(|s| s.table_id().cloned())
+        } else {
+            None
+        };
 
-        Ok(List::new(tables, None))
+        Ok(List::new(tables, next_page_token))
     }
 
     async fn get_table(
@@ -509,77 +445,20 @@ impl TableManager for PostgresTableManager {
         schema_name: &str,
         table_name: &str,
     ) -> Result<Table, TableManagerError> {
-        let tables: Option<Table> = sqlx::query(
-            r#"
-            SELECT
-                share.name AS share_name,
-                share.id::text AS share_id,
-                "schema".name AS schema_name,
-                "table".name AS table_name,
-                "table".id::text AS table_id,
-                "table".storage_path AS storage_path,
-                "table".storage_format AS storage_format
-            FROM share
-            LEFT JOIN "schema" ON "schema".share_id = share.id
-            LEFT JOIN "table" ON "table".schema_id = "schema".id
-            WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3
-            ORDER BY table_id
-            "#,
-        )
-        .bind(share_name)
-        .bind(schema_name)
-        .bind(table_name)
-        .fetch_optional(&self.pool)
-        .await?
-        .map(|row| {
-            let share_name = row.get("share_name");
-            let share_id = row.get("share_id");
-            let schema_name = row.get("schema_name");
-            let table_name = row.get("table_name");
-            let table_id = row.get("table_id");
-            let storage_path = row.get("storage_path");
-            let storage_format = row.get("storage_format");
-
-            let share = Share::new(share_name, Some(share_id));
-            let schema = Schema::new(share, schema_name, None);
-            Table::new(
-                schema,
-                table_name,
-                storage_path,
-                Some(table_id),
-                storage_format,
-            )
-        });
-
-        match tables {
-            Some(table) => Ok(table),
-            None => Err(TableManagerError::TableNotFound {
-                share_name: share_name.to_string(),
-                schema_name: schema_name.to_string(),
-                table_name: table_name.to_string(),
-            }),
-        }
+        self.select_table_by_name(share_name, schema_name, table_name)
+            .await?
+            .ok_or(TableManagerError::TableNotFound {
+                share_name: share_name.to_owned(),
+                schema_name: schema_name.to_owned(),
+                table_name: table_name.to_owned(),
+            })
     }
 }
 
+// TODO: Sort out Error handling and conversion
 impl From<sqlx::Error> for TableManagerError {
     fn from(err: sqlx::Error) -> Self {
         match err {
-            // sqlx::Error::Configuration(_) => todo!(),
-            // sqlx::Error::Database(_) => todo!(),
-            // sqlx::Error::Io(_) => todo!(),
-            // sqlx::Error::Tls(_) => todo!(),
-            // sqlx::Error::Protocol(_) => todo!(),
-            // sqlx::Error::RowNotFound => todo!(),
-            // sqlx::Error::TypeNotFound { type_name } => todo!(),
-            // sqlx::Error::ColumnIndexOutOfBounds { index, len } => todo!(),
-            // sqlx::Error::ColumnNotFound(_) => todo!(),
-            // sqlx::Error::ColumnDecode { index, source } => todo!(),
-            // sqlx::Error::Decode(_) => todo!(),
-            // sqlx::Error::PoolTimedOut => todo!(),
-            // sqlx::Error::PoolClosed => todo!(),
-            // sqlx::Error::WorkerCrashed => todo!(),
-            // sqlx::Error::Migrate(_) => todo!(),
             _ => TableManagerError::Other {
                 reason: err.to_string(),
             },

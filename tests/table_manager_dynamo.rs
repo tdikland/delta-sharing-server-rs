@@ -4,7 +4,7 @@ use aws_sdk_dynamodb::types::{
     AttributeDefinition, BillingMode, GlobalSecondaryIndex, KeySchemaElement, KeyType, Projection,
     ProjectionType, ProvisionedThroughput, ScalarAttributeType, TableStatus,
 };
-use delta_sharing_server_rs::manager::dynamo::{DynamoConfig, DynamoTableManager};
+use delta_sharing_server_rs::manager::dynamo::DynamoTableManager;
 use delta_sharing_server_rs::protocol::securables::{Schema, Share, Table};
 
 async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager {
@@ -15,7 +15,6 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
     let index_name = "list-index";
 
     if !create_table_if_not_exists {
-        let table_manager_config = DynamoConfig::new(table_name, index_name);
         let table_manager =
             DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
         return table_manager;
@@ -27,7 +26,6 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
             if t.table_status().unwrap() != &TableStatus::Active {
                 panic!("table_not_active")
             }
-            let table_manager_config = DynamoConfig::new(table_name, index_name);
             let table_manager =
                 DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
             return table_manager;
@@ -117,7 +115,6 @@ async fn create_manager(create_table_if_not_exists: bool) -> DynamoTableManager 
             .clone();
     }
 
-    let table_manager_config = DynamoConfig::new(table_name, index_name);
     let table_manager =
         DynamoTableManager::new(client, table_name.to_owned(), index_name.to_owned());
     table_manager

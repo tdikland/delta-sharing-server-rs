@@ -154,7 +154,7 @@ impl SharingServerState {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-        version: Version,
+        _version: Version,
     ) -> Result<TableInfoResponse, ServerError> {
         let table = self
             .table_manager()

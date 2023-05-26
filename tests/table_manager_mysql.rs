@@ -1,11 +1,11 @@
-use delta_sharing_server_rs::manager::{postgres::PostgresTableManager, ListCursor, TableManager};
-use sqlx::PgPool;
+use delta_sharing_server_rs::manager::{mysql::MySqlTableManager, ListCursor, TableManager};
+use sqlx::MySqlPool;
 use uuid::Uuid;
 
-async fn insert_share(pool: &PgPool, name: &str) -> Uuid {
-    let uuid = Uuid::new_v4();
-    sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2)")
-        .bind(uuid)
+async fn insert_share(pool: &MySqlPool, name: &str) -> String {
+    let uuid = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO share (id, name) VALUES (?, ?)")
+        .bind(&uuid)
         .bind(name)
         .execute(pool)
         .await
@@ -14,10 +14,10 @@ async fn insert_share(pool: &PgPool, name: &str) -> Uuid {
     uuid
 }
 
-async fn insert_schema(pool: &PgPool, name: &str, share_id: &Uuid) -> Uuid {
-    let uuid = Uuid::new_v4();
-    sqlx::query("INSERT INTO \"schema\" (id, name, share_id) VALUES ($1, $2, $3)")
-        .bind(uuid)
+async fn insert_schema(pool: &MySqlPool, name: &str, share_id: &str) -> String {
+    let uuid = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO `schema` (id, name, share_id) VALUES (?, ?, ?)")
+        .bind(&uuid)
         .bind(name)
         .bind(share_id)
         .execute(pool)
@@ -27,29 +27,27 @@ async fn insert_schema(pool: &PgPool, name: &str, share_id: &Uuid) -> Uuid {
     uuid
 }
 
-async fn insert_table(pool: &PgPool, name: &str, schema_id: &Uuid) -> Uuid {
-    let uuid = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO \"table\" (id, name, schema_id, storage_path) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(uuid)
-    .bind(name)
-    .bind(schema_id)
-    .bind(format!("s3://bucket/{}", name))
-    .execute(pool)
-    .await
-    .unwrap();
-
-    uuid
-}
-
-async fn delete_shares(pool: &PgPool) {
-    sqlx::query("DELETE FROM \"table\"")
+async fn insert_table(pool: &MySqlPool, name: &str, schema_id: &str) -> String {
+    let uuid = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO `table` (id, name, schema_id, storage_path) VALUES (?, ?, ?, ?)")
+        .bind(&uuid)
+        .bind(name)
+        .bind(schema_id)
+        .bind(format!("s3://bucket/{}", name))
         .execute(pool)
         .await
         .unwrap();
 
-    sqlx::query("DELETE FROM \"schema\"")
+    uuid
+}
+
+async fn delete_shares(pool: &MySqlPool) {
+    sqlx::query("DELETE FROM `table`")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    sqlx::query("DELETE FROM `schema`")
         .execute(pool)
         .await
         .unwrap();
@@ -60,8 +58,8 @@ async fn delete_shares(pool: &PgPool) {
         .unwrap();
 }
 
-async fn setup_tables(pool: &PgPool) {
-    sqlx::migrate!("src/manager/postgres/migrations")
+async fn setup_tables(pool: &MySqlPool) {
+    sqlx::migrate!("src/manager/mysql/migrations")
         .run(pool)
         .await
         .unwrap();
@@ -101,8 +99,7 @@ async fn setup_tables(pool: &PgPool) {
 
 #[tokio::test]
 async fn list_tables() {
-    let table_manager =
-        PostgresTableManager::new("postgres://postgres:postgrespw@localhost:32770").await;
+    let table_manager = MySqlTableManager::new("mysql://root:password@localhost:55000/mysql").await;
     setup_tables(table_manager.pool()).await;
 
     let list_shares = table_manager

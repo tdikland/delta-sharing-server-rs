@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Share {
@@ -33,12 +32,12 @@ impl Display for Share {
 pub struct Schema {
     share: Share,
     name: String,
-    id: Option<String>
+    id: Option<String>,
 }
 
 impl Schema {
     pub fn new(share: Share, name: String, id: Option<String>) -> Self {
-        Self { share, name, id: None }
+        Self { share, name, id }
     }
 
     pub fn share_name(&self) -> &str {
