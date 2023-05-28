@@ -23,6 +23,10 @@ impl MySqlTableManager {
         Self { pool }
     }
 
+    pub fn from_pool(pool: MySqlPool) -> Self {
+        Self { pool }
+    }
+
     pub fn pool(&self) -> &MySqlPool {
         &self.pool
     }
@@ -30,7 +34,7 @@ impl MySqlTableManager {
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
         let share_id = Uuid::new_v4();
         sqlx::query("INSERT INTO share (id, name) VALUES (?, ?);")
-            .bind(share_id)
+            .bind(share_id.to_string())
             .bind(share_name)
             .execute(&self.pool)
             .await?;
@@ -59,7 +63,8 @@ impl MySqlTableManager {
     }
 
     async fn select_shares(&self, cursor: &MySqlCursor) -> Result<Vec<Share>, sqlx::Error> {
-        sqlx::query(
+        dbg!(&cursor);
+        let r = sqlx::query(
             r#"
             SELECT 
                 id AS share_id,
@@ -76,7 +81,16 @@ impl MySqlTableManager {
         .await?
         .into_iter()
         .map(TryFrom::try_from)
-        .collect()
+        .collect();
+        dbg!(&r);
+        r
+    }
+
+    pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM share;")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn insert_schema(
@@ -91,9 +105,9 @@ impl MySqlTableManager {
             VALUES (?, ?, ?);
             "#,
         )
-        .bind(schema_id)
+        .bind(schema_id.to_string())
         .bind(schema_name)
-        .bind(share.id())
+        .bind(share.id().unwrap())
         .execute(&self.pool)
         .await?;
 
@@ -133,6 +147,13 @@ impl MySqlTableManager {
         .collect()
     }
 
+    pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM `schema`;")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn insert_table(
         &self,
         schema: &Schema,
@@ -147,7 +168,7 @@ impl MySqlTableManager {
             VALUES (?, ?, ?, ?, ?);
             "#,
         )
-        .bind(uuid)
+        .bind(uuid.to_string())
         .bind(table_name)
         .bind(schema.id().unwrap())
         .bind(storage_path)
@@ -265,8 +286,16 @@ impl MySqlTableManager {
         .map(TryFrom::try_from)
         .transpose()
     }
+
+    pub async fn delete_tables(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM `table`;")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
+#[derive(Debug)]
 struct MySqlCursor {
     last_seen_id: Option<Uuid>,
     limit: Option<u32>,

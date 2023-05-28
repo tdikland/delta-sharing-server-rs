@@ -23,6 +23,10 @@ impl PostgresTableManager {
         Self { pool }
     }
 
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
@@ -79,6 +83,23 @@ impl PostgresTableManager {
         .collect()
     }
 
+    pub async fn delete_share_by_name(&self, share_name: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM share WHERE name = $1;")
+            .bind(share_name)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM share;")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn insert_schema(
         &self,
         share: &Share,
@@ -93,7 +114,7 @@ impl PostgresTableManager {
         )
         .bind(schema_id)
         .bind(schema_name)
-        .bind(share.id())
+        .bind(Uuid::parse_str(share.id().unwrap()).unwrap())
         .execute(&self.pool)
         .await?;
 
@@ -102,6 +123,31 @@ impl PostgresTableManager {
             schema_name.to_string(),
             Some(schema_id.to_string()),
         ))
+    }
+
+    async fn select_schema_by_name(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+    ) -> Result<Option<Schema>, sqlx::Error> {
+        sqlx::query(
+            r#"
+            SELECT 
+                share.id::text AS share_id,
+                share.name AS share_name,
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name
+            FROM share
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            WHERE share.name = $1 AND "schema".name = $2;
+            "#,
+        )
+        .bind(share_name)
+        .bind(schema_name)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(TryFrom::try_from)
+        .transpose()
     }
 
     async fn select_schemas_by_share_name(
@@ -133,7 +179,23 @@ impl PostgresTableManager {
         .collect()
     }
 
-    // TODO: remove unwrap
+    pub async fn delete_schema_by_name(&self, schema_name: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(r#"DELETE FROM "schema" WHERE name = $1;"#)
+            .bind(schema_name)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
+        sqlx::query(r#"DELETE FROM "schema";"#)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn insert_table(
         &self,
         schema: &Schema,
@@ -150,7 +212,7 @@ impl PostgresTableManager {
         )
         .bind(uuid)
         .bind(table_name)
-        .bind(schema.id().unwrap())
+        .bind(Uuid::parse_str(schema.id().unwrap()).unwrap())
         .bind(storage_path)
         .bind(storage_format)
         .execute(&self.pool)
@@ -265,6 +327,45 @@ impl PostgresTableManager {
         .await?
         .map(TryFrom::try_from)
         .transpose()
+    }
+
+    pub async fn delete_table_by_name(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            DELETE FROM "table"
+            WHERE id IN (
+                SELECT "table".id
+                FROM share
+                LEFT JOIN "schema" ON "schema".share_id = share.id
+                LEFT JOIN "table" ON "table".schema_id = "schema".id
+                WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3
+            );
+            "#,
+        )
+        .bind(share_name)
+        .bind(schema_name)
+        .bind(table_name)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_tables(&self) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            DELETE FROM "table";
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 
@@ -445,13 +546,31 @@ impl TableManager for PostgresTableManager {
         schema_name: &str,
         table_name: &str,
     ) -> Result<Table, TableManagerError> {
-        self.select_table_by_name(share_name, schema_name, table_name)
-            .await?
-            .ok_or(TableManagerError::TableNotFound {
-                share_name: share_name.to_owned(),
-                schema_name: schema_name.to_owned(),
-                table_name: table_name.to_owned(),
-            })
+        match self
+            .select_table_by_name(share_name, schema_name, table_name)
+            .await
+        {
+            Ok(Some(table)) => Ok(table),
+            Ok(None) => {
+                let share = self.select_share_by_name(share_name).await?;
+                let schema = self.select_schema_by_name(share_name, schema_name).await?;
+                match (share, schema) {
+                    (None, _) => Err(TableManagerError::ShareNotFound {
+                        share_name: share_name.to_owned(),
+                    }),
+                    (Some(_), None) => Err(TableManagerError::SchemaNotFound {
+                        share_name: share_name.to_owned(),
+                        schema_name: schema_name.to_owned(),
+                    }),
+                    (Some(_), Some(_)) => Err(TableManagerError::TableNotFound {
+                        share_name: share_name.to_owned(),
+                        schema_name: schema_name.to_owned(),
+                        table_name: table_name.to_owned(),
+                    }),
+                }
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 }
 

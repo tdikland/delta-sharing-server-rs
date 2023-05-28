@@ -42,7 +42,7 @@ pub trait TableManager: Send + Sync {
     ) -> Result<Table, TableManagerError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TableManagerError {
     ShareNotFound {
         share_name: String,
