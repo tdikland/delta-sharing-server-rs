@@ -16,6 +16,8 @@ use std::net::{SocketAddr, TcpListener};
 use std::{convert::TryFrom, sync::Arc};
 use tower::make::Shared;
 
+pub mod table_manager;
+
 pub struct TestClient {
     client: reqwest::Client,
     addr: SocketAddr,

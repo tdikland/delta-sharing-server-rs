@@ -1,13 +1,15 @@
 use async_trait::async_trait;
 use sqlx::{
     postgres::{PgPoolOptions, PgRow},
-    PgPool, Row,
+    Executor, PgPool, Row,
 };
 use uuid::Uuid;
 
 use crate::protocol::securables::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
+
+#[derive(Debug)]
 pub struct PostgresTableManager {
     pool: PgPool,
 }
@@ -15,7 +17,7 @@ pub struct PostgresTableManager {
 impl PostgresTableManager {
     pub async fn new(connection_url: &str) -> Self {
         let pool = PgPoolOptions::new()
-            .max_connections(5)
+            .max_connections(500)
             .connect(connection_url)
             .await
             .expect("Failed to connect to Postgres");

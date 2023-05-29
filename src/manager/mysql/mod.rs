@@ -4,6 +4,7 @@ use sqlx::MySqlPool;
 use sqlx::Row;
 use uuid::Uuid;
 
+#[derive(Debug)]
 pub struct MySqlTableManager {
     pool: MySqlPool,
 }
@@ -15,10 +16,10 @@ use super::{List, ListCursor, TableManager, TableManagerError};
 impl MySqlTableManager {
     pub async fn new(connection_url: &str) -> Self {
         let pool = MySqlPoolOptions::new()
-            .max_connections(5)
+            .max_connections(25)
             .connect(connection_url)
             .await
-            .expect("Failed to connect to Postgres");
+            .expect("failed to connect to mysql");
 
         Self { pool }
     }
@@ -32,17 +33,13 @@ impl MySqlTableManager {
     }
 
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
-        let share_id = Uuid::new_v4();
-        sqlx::query("INSERT INTO share (id, name) VALUES (?, ?);")
-            .bind(share_id.to_string())
+        let insert = sqlx::query("INSERT INTO share (name) VALUES (?);")
             .bind(share_name)
             .execute(&self.pool)
             .await?;
+        let share_id = insert.last_insert_id().to_string();
 
-        Ok(Share::new(
-            share_name.to_string(),
-            Some(share_id.to_string()),
-        ))
+        Ok(Share::new(share_name.to_string(), Some(share_id)))
     }
 
     async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
@@ -63,8 +60,7 @@ impl MySqlTableManager {
     }
 
     async fn select_shares(&self, cursor: &MySqlCursor) -> Result<Vec<Share>, sqlx::Error> {
-        dbg!(&cursor);
-        let r = sqlx::query(
+        sqlx::query(
             r#"
             SELECT 
                 id AS share_id,
@@ -81,9 +77,7 @@ impl MySqlTableManager {
         .await?
         .into_iter()
         .map(TryFrom::try_from)
-        .collect();
-        dbg!(&r);
-        r
+        .collect()
     }
 
     pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
@@ -98,24 +92,48 @@ impl MySqlTableManager {
         share: &Share,
         schema_name: &str,
     ) -> Result<Schema, sqlx::Error> {
-        let schema_id = Uuid::new_v4();
-        sqlx::query(
+        let insert = sqlx::query(
             r#"
-            INSERT INTO `schema` (id, name, share_id) 
-            VALUES (?, ?, ?);
+            INSERT INTO `schema` (name, share_id) 
+            VALUES (?, ?);
             "#,
         )
-        .bind(schema_id.to_string())
         .bind(schema_name)
         .bind(share.id().unwrap())
         .execute(&self.pool)
         .await?;
+        let schema_id = insert.last_insert_id().to_string();
 
         Ok(Schema::new(
             share.clone(),
             schema_name.to_string(),
-            Some(schema_id.to_string()),
+            Some(schema_id),
         ))
+    }
+
+    async fn select_schema_by_name(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+    ) -> Result<Option<Schema>, sqlx::Error> {
+        sqlx::query(
+            r#"
+            SELECT 
+                share.id AS share_id,
+                share.name AS share_name,
+                `schema`.id AS schema_id,
+                `schema`.name AS schema_name
+            FROM share
+            LEFT JOIN `schema` ON `schema`.share_id = share.id
+            WHERE share.name = ? AND `schema`.name = ?;
+            "#,
+        )
+        .bind(share_name)
+        .bind(schema_name)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(TryFrom::try_from)
+        .transpose()
     }
 
     async fn select_schemas_by_share_name(
@@ -161,26 +179,25 @@ impl MySqlTableManager {
         storage_path: &str,
         storage_format: Option<&String>,
     ) -> Result<Table, sqlx::Error> {
-        let uuid = Uuid::new_v4();
-        sqlx::query(
+        let insert = sqlx::query(
             r#"
-            INSERT INTO `table` (id, name, schema_id, storage_path, storage_format) 
-            VALUES (?, ?, ?, ?, ?);
+            INSERT INTO `table` (name, schema_id, storage_path, storage_format) 
+            VALUES (?, ?, ?, ?);
             "#,
         )
-        .bind(uuid.to_string())
         .bind(table_name)
         .bind(schema.id().unwrap())
         .bind(storage_path)
         .bind(storage_format)
         .execute(&self.pool)
         .await?;
+        let table_id = insert.last_insert_id().to_string();
 
         Ok(Table::new(
             schema.clone(),
             table_name.to_owned(),
             storage_path.to_owned(),
-            Some(uuid.to_string()),
+            Some(table_id),
             storage_format.cloned(),
         ))
     }
@@ -297,22 +314,22 @@ impl MySqlTableManager {
 
 #[derive(Debug)]
 struct MySqlCursor {
-    last_seen_id: Option<Uuid>,
+    last_seen_id: Option<u64>,
     limit: Option<u32>,
 }
 
 impl MySqlCursor {
-    pub fn new(last_seen_id: Option<Uuid>, limit: Option<u32>) -> Self {
+    pub fn new(last_seen_id: Option<u64>, limit: Option<u32>) -> Self {
         Self {
             last_seen_id,
             limit,
         }
     }
 
-    pub fn last_seen_id(&self) -> Uuid {
+    pub fn last_seen_id(&self) -> u64 {
         match self.last_seen_id {
             Some(id) => id,
-            None => Uuid::nil(),
+            None => 0,
         }
     }
 
@@ -324,12 +341,14 @@ impl MySqlCursor {
     }
 }
 
+use core::str::FromStr;
+
 impl TryFrom<ListCursor> for MySqlCursor {
     type Error = &'static str;
     fn try_from(cursor: ListCursor) -> Result<Self, Self::Error> {
         let last_seen_id = cursor
             .page_token()
-            .map(|token| Uuid::parse_str(token).map_err(|_| "invalid page token"))
+            .map(|token| u64::from_str(token).map_err(|_| "invalid page token"))
             .transpose()?;
         let pg_cursor = MySqlCursor::new(last_seen_id, cursor.max_results());
         Ok(pg_cursor)
@@ -341,8 +360,8 @@ impl TryFrom<MySqlRow> for Share {
 
     fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
         let name: String = row.try_get("share_name")?;
-        let id: String = row.try_get("share_id")?;
-        Ok(Share::new(name, Some(id)))
+        let id: i32 = row.try_get("share_id")?;
+        Ok(Share::new(name, Some(id.to_string())))
     }
 }
 
@@ -350,12 +369,12 @@ impl TryFrom<MySqlRow> for Schema {
     type Error = sqlx::Error;
 
     fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
-        let share_id: String = row.try_get("share_id")?;
+        let share_id: i32 = row.try_get("share_id")?;
         let share_name: String = row.try_get("share_name")?;
-        let schema_id: String = row.try_get("schema_id")?;
+        let schema_id: i32 = row.try_get("schema_id")?;
         let schema_name: String = row.try_get("schema_name")?;
-        let share = Share::new(share_name, Some(share_id));
-        Ok(Schema::new(share, schema_name, Some(schema_id)))
+        let share = Share::new(share_name, Some(share_id.to_string()));
+        Ok(Schema::new(share, schema_name, Some(schema_id.to_string())))
     }
 }
 
@@ -363,22 +382,22 @@ impl TryFrom<MySqlRow> for Table {
     type Error = sqlx::Error;
 
     fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
-        let share_id: String = row.try_get("share_id")?;
+        let share_id: i32 = row.try_get("share_id")?;
         let share_name: String = row.try_get("share_name")?;
-        let schema_id: String = row.try_get("schema_id")?;
+        let schema_id: i32 = row.try_get("schema_id")?;
         let schema_name: String = row.try_get("schema_name")?;
-        let table_id: String = row.try_get("table_id")?;
+        let table_id: i32 = row.try_get("table_id")?;
         let table_name: String = row.try_get("table_name")?;
         let storage_path: String = row.try_get("storage_path")?;
         let storage_format: Option<String> = row.try_get("storage_format")?;
 
-        let share = Share::new(share_name, Some(share_id));
-        let schema = Schema::new(share, schema_name, Some(schema_id));
+        let share = Share::new(share_name, Some(share_id.to_string()));
+        let schema = Schema::new(share, schema_name, Some(schema_id.to_string()));
         Ok(Table::new(
             schema,
             table_name,
             storage_path,
-            Some(table_id),
+            Some(table_id.to_string()),
             storage_format,
         ))
     }
@@ -473,13 +492,31 @@ impl TableManager for MySqlTableManager {
         schema_name: &str,
         table_name: &str,
     ) -> Result<Table, TableManagerError> {
-        self.select_table_by_name(share_name, schema_name, table_name)
-            .await?
-            .ok_or(TableManagerError::TableNotFound {
-                share_name: share_name.to_owned(),
-                schema_name: schema_name.to_owned(),
-                table_name: table_name.to_owned(),
-            })
+        match self
+            .select_table_by_name(share_name, schema_name, table_name)
+            .await
+        {
+            Ok(Some(table)) => Ok(table),
+            Ok(None) => {
+                let share = self.select_share_by_name(share_name).await?;
+                let schema = self.select_schema_by_name(share_name, schema_name).await?;
+                match (share, schema) {
+                    (None, _) => Err(TableManagerError::ShareNotFound {
+                        share_name: share_name.to_owned(),
+                    }),
+                    (Some(_), None) => Err(TableManagerError::SchemaNotFound {
+                        share_name: share_name.to_owned(),
+                        schema_name: schema_name.to_owned(),
+                    }),
+                    (Some(_), Some(_)) => Err(TableManagerError::TableNotFound {
+                        share_name: share_name.to_owned(),
+                        schema_name: schema_name.to_owned(),
+                        table_name: table_name.to_owned(),
+                    }),
+                }
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 }
 

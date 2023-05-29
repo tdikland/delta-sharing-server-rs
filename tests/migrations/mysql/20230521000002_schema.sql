@@ -1,6 +1,6 @@
-CREATE TABLE IF NOT EXISTS `schema` (
-    id VARCHAR(255) PRIMARY KEY,
+CREATE TABLE `schema` (
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    share_id VARCHAR(255) NOT NULL REFERENCES share(id)
+    share_id INT NOT NULL REFERENCES share(id)
 );
 
