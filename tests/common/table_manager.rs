@@ -79,9 +79,9 @@ impl IntegrationContext {
     }
 
     pub async fn setup_dynamo() -> Self {
-        let aws_region = env::var("AWS_REGION").expect("`AWS_REGION` is set");
-        let access_key = env::var("AWS_ACCESS_KEY_ID").expect("`AWS_ACCESS_KEY_ID` is set");
-        let access_secret = env::var("AWS_SECRET_ACCESS_KEY").expect("`AWS_ACCESS_KEY_ID` is set");
+        let _aws_region = env::var("AWS_REGION").expect("`AWS_REGION` is set");
+        let _access_key = env::var("AWS_ACCESS_KEY_ID").expect("`AWS_ACCESS_KEY_ID` is set");
+        let _access_secret = env::var("AWS_SECRET_ACCESS_KEY").expect("`AWS_ACCESS_KEY_ID` is set");
 
         let config = aws_config::load_from_env().await;
         let client = aws_sdk_dynamodb::Client::new(&config);
@@ -128,13 +128,13 @@ impl IntegrationContext {
                     .index_name(index_name)
                     .key_schema(
                         KeySchemaElement::builder()
-                            .attribute_name("PK")
+                            .attribute_name("SK")
                             .key_type(KeyType::Hash)
                             .build(),
                     )
                     .key_schema(
                         KeySchemaElement::builder()
-                            .attribute_name("SK")
+                            .attribute_name("PK")
                             .key_type(KeyType::Range)
                             .build(),
                     )
@@ -194,7 +194,7 @@ impl IntegrationContext {
         }
     }
 
-    async fn teardown(&mut self) {
+    pub async fn teardown(&mut self) {
         self.manager.teardown(&self.db_url, &self.db_name).await
     }
 
@@ -223,19 +223,19 @@ impl IntegrationContext {
     }
 }
 
-impl Drop for IntegrationContext {
-    fn drop(&mut self) {
-        std::thread::scope(|s| {
-            s.spawn(|| {
-                let runtime = tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                runtime.block_on(self.teardown());
-            });
-        });
-    }
-}
+// impl Drop for IntegrationContext {
+//     fn drop(&mut self) {
+//         std::thread::scope(|s| {
+//             s.spawn(|| {
+//                 let runtime = tokio::runtime::Builder::new_multi_thread()
+//                     .enable_all()
+//                     .build()
+//                     .unwrap();
+//                 runtime.block_on(self.teardown());
+//             });
+//         });
+//     }
+// }
 
 #[derive(Debug)]
 pub enum Manager {
@@ -415,7 +415,7 @@ impl Manager {
                     let schema = build_schema(share_number, schema_number);
                     let table_name = format!("table_{}", table_number);
                     let storage_path = format!(
-                        "s3://bucket/share_{}/schema_{}/table_{}/",
+                        "s3://bucket/table_{}{}{}/",
                         share_number, schema_number, table_number
                     );
                     let table_id = format!("table_id_{}", table_number);
@@ -463,6 +463,9 @@ impl Manager {
                 for table in tables {
                     ddb.put_table(table).await.unwrap();
                 }
+
+                // Wait for items to be eventually consistent
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
     }
@@ -509,6 +512,7 @@ impl Manager {
                     .expect("Failed to drop database.");
             }
             Manager::Dynamo(ddb) => {
+                dbg!(&db_name);
                 ddb.client()
                     .delete_table()
                     .table_name(db_name)

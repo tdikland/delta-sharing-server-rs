@@ -242,7 +242,9 @@ impl DynamoTableManager {
             .key_condition_expression("#SK = :sk AND begins_with(#PK, :pk)");
         query = with_cursor(query, cursor)?;
 
-        let query_output = query.send().await.map_err(|e| DynamoError::ServiceError {
+        let query_output = query.send().await;
+        dbg!(&query_output);
+        let query_output = query_output.map_err(|e| DynamoError::ServiceError {
             reason: e.to_string(),
         })?;
         let list_result = parse_query_output(query_output)?;
@@ -581,6 +583,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
 
 impl From<DynamoError> for TableManagerError {
     fn from(value: DynamoError) -> Self {
+        println!("ENCOUNTERED ERROR!: {:?}", &value);
         match value {
             DynamoError::InvalidListCursor => TableManagerError::MalformedContinuationToken,
             DynamoError::ShareNotFound { share } => {
