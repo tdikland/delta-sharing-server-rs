@@ -1,6 +1,17 @@
-use delta_sharing_server_rs::manager::{mysql::MySqlTableManager, postgres::PostgresTableManager};
+#![allow(dead_code)]
+
+use aws_sdk_dynamodb::types::{
+    AttributeDefinition, BillingMode, GlobalSecondaryIndex, KeySchemaElement, KeyType, Projection,
+    ProjectionType, ProvisionedThroughput, ScalarAttributeType, TableStatus,
+};
+use delta_sharing_server_rs::{
+    manager::{
+        dynamo::DynamoTableManager, mysql::MySqlTableManager, postgres::PostgresTableManager,
+    },
+    protocol::securables::{Schema, Share, Table},
+};
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};
-use std::env;
+use std::{env, time::Duration};
 use url::Url;
 use uuid::Uuid;
 
@@ -67,6 +78,122 @@ impl IntegrationContext {
         }
     }
 
+    pub async fn setup_dynamo() -> Self {
+        let aws_region = env::var("AWS_REGION").expect("`AWS_REGION` is set");
+        let access_key = env::var("AWS_ACCESS_KEY_ID").expect("`AWS_ACCESS_KEY_ID` is set");
+        let access_secret = env::var("AWS_SECRET_ACCESS_KEY").expect("`AWS_ACCESS_KEY_ID` is set");
+
+        let config = aws_config::load_from_env().await;
+        let client = aws_sdk_dynamodb::Client::new(&config);
+
+        let table_name = format!("test-table-manager-{}", Uuid::new_v4());
+        let index_name = "list-index";
+
+        client
+            .create_table()
+            .table_name(table_name.clone())
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("PK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build(),
+            )
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("SK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("PK")
+                    .key_type(KeyType::Hash)
+                    .build(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("SK")
+                    .key_type(KeyType::Range)
+                    .build(),
+            )
+            .billing_mode(BillingMode::Provisioned)
+            .provisioned_throughput(
+                ProvisionedThroughput::builder()
+                    .read_capacity_units(5)
+                    .write_capacity_units(5)
+                    .build(),
+            )
+            .global_secondary_indexes(
+                GlobalSecondaryIndex::builder()
+                    .index_name(index_name)
+                    .key_schema(
+                        KeySchemaElement::builder()
+                            .attribute_name("PK")
+                            .key_type(KeyType::Hash)
+                            .build(),
+                    )
+                    .key_schema(
+                        KeySchemaElement::builder()
+                            .attribute_name("SK")
+                            .key_type(KeyType::Range)
+                            .build(),
+                    )
+                    .provisioned_throughput(
+                        ProvisionedThroughput::builder()
+                            .read_capacity_units(5)
+                            .write_capacity_units(5)
+                            .build(),
+                    )
+                    .projection(
+                        Projection::builder()
+                            .projection_type(ProjectionType::All)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .unwrap();
+
+        let mut table_status = TableStatus::Creating;
+        while table_status != TableStatus::Active {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let describe_table = client
+                .describe_table()
+                .table_name(table_name.clone())
+                .send()
+                .await
+                .unwrap();
+            table_status = describe_table
+                .table()
+                .unwrap()
+                .table_status()
+                .unwrap()
+                .clone();
+        }
+
+        let ddb_manager =
+            DynamoTableManager::new(client, table_name.clone(), index_name.to_owned());
+
+        let mut manager = Manager::Dynamo(ddb_manager);
+        manager.setup().await;
+        manager.prepare_data().await;
+
+        Self {
+            manager,
+            db_url: "".to_string(),
+            db_name: table_name,
+        }
+    }
+
+    pub fn from_dynamo(manager: DynamoTableManager, db_url: &str, db_name: &str) -> Self {
+        Self {
+            manager: Manager::Dynamo(manager),
+            db_url: db_url.to_owned(),
+            db_name: db_name.to_owned(),
+        }
+    }
+
     async fn teardown(&mut self) {
         self.manager.teardown(&self.db_url, &self.db_name).await
     }
@@ -84,6 +211,14 @@ impl IntegrationContext {
             mysql
         } else {
             panic!("expected mysql table manager")
+        }
+    }
+
+    pub fn as_dynamo(&self) -> &DynamoTableManager {
+        if let Manager::Dynamo(ddb) = &self.manager {
+            ddb
+        } else {
+            panic!("expected dynamo table manager")
         }
     }
 }
@@ -106,6 +241,7 @@ impl Drop for IntegrationContext {
 pub enum Manager {
     Postgres(PostgresTableManager),
     MySql(MySqlTableManager),
+    Dynamo(DynamoTableManager),
 }
 
 impl Manager {
@@ -123,6 +259,7 @@ impl Manager {
                     .await
                     .unwrap();
             }
+            Manager::Dynamo(_) => (),
         }
     }
 
@@ -256,6 +393,77 @@ impl Manager {
                     .await
                     .unwrap();
             }
+            Manager::Dynamo(ddb) => {
+                fn build_share(share_number: &str) -> Share {
+                    let name = format!("share_{}", share_number);
+                    let id = format!("share_id_{}", share_number);
+                    Share::new(name, Some(id))
+                }
+
+                fn build_schema(share_number: &str, schema_number: &str) -> Schema {
+                    let share = build_share(share_number);
+                    let schema_name = format!("schema_{}", schema_number);
+                    let id = format!("schema_id_{}", schema_number);
+                    Schema::new(share, schema_name, Some(id))
+                }
+
+                fn build_table(
+                    share_number: &str,
+                    schema_number: &str,
+                    table_number: &str,
+                ) -> Table {
+                    let schema = build_schema(share_number, schema_number);
+                    let table_name = format!("table_{}", table_number);
+                    let storage_path = format!(
+                        "s3://bucket/share_{}/schema_{}/table_{}/",
+                        share_number, schema_number, table_number
+                    );
+                    let table_id = format!("table_id_{}", table_number);
+                    let table_format = "DELTA".to_owned();
+                    Table::new(
+                        schema,
+                        table_name,
+                        storage_path,
+                        Some(table_id),
+                        Some(table_format),
+                    )
+                }
+
+                let shares = ["1", "2", "3"]
+                    .into_iter()
+                    .map(build_share)
+                    .collect::<Vec<Share>>();
+                for share in shares {
+                    ddb.put_share(share).await.unwrap();
+                }
+
+                // Add schemas to table manager
+                let schemas = [("1", "1"), ("1", "2"), ("2", "1")]
+                    .into_iter()
+                    .map(|(share, schema)| build_schema(share, schema))
+                    .collect::<Vec<Schema>>();
+                for schema in schemas {
+                    ddb.put_schema(schema).await.unwrap();
+                }
+
+                // Add tables to table manager
+                let tables = [
+                    ("1", "1", "1"),
+                    ("1", "1", "2"),
+                    ("1", "1", "3"),
+                    ("1", "1", "4"),
+                    ("1", "2", "1"),
+                    ("1", "2", "2"),
+                    ("2", "1", "1"),
+                    ("2", "1", "2"),
+                ]
+                .into_iter()
+                .map(|(sh, sch, t)| build_table(sh, sch, t))
+                .collect::<Vec<Table>>();
+                for table in tables {
+                    ddb.put_table(table).await.unwrap();
+                }
+            }
         }
     }
 
@@ -299,6 +507,14 @@ impl Manager {
                     .execute(format!("DROP DATABASE {};", db_name).as_str())
                     .await
                     .expect("Failed to drop database.");
+            }
+            Manager::Dynamo(ddb) => {
+                ddb.client()
+                    .delete_table()
+                    .table_name(db_name)
+                    .send()
+                    .await
+                    .expect("failed to delete ddb table");
             }
         }
     }

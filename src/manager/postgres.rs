@@ -1,55 +1,60 @@
 use async_trait::async_trait;
-use sqlx::mysql::{MySqlPoolOptions, MySqlRow};
-use sqlx::MySqlPool;
-use sqlx::Row;
+use sqlx::{
+    postgres::{PgPoolOptions, PgRow},
+    PgPool, Row,
+};
 use uuid::Uuid;
-
-#[derive(Debug)]
-pub struct MySqlTableManager {
-    pool: MySqlPool,
-}
 
 use crate::protocol::securables::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
 
-impl MySqlTableManager {
+#[derive(Debug)]
+pub struct PostgresTableManager {
+    pool: PgPool,
+}
+
+impl PostgresTableManager {
     pub async fn new(connection_url: &str) -> Self {
-        let pool = MySqlPoolOptions::new()
-            .max_connections(25)
+        let pool = PgPoolOptions::new()
+            .max_connections(500)
             .connect(connection_url)
             .await
-            .expect("failed to connect to mysql");
+            .expect("Failed to connect to Postgres");
 
         Self { pool }
     }
 
-    pub fn from_pool(pool: MySqlPool) -> Self {
+    pub fn from_pool(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    pub fn pool(&self) -> &MySqlPool {
+    pub fn pool(&self) -> &PgPool {
         &self.pool
     }
 
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
-        let insert = sqlx::query("INSERT INTO share (name) VALUES (?);")
+        let share_id = Uuid::new_v4();
+        sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2);")
+            .bind(share_id)
             .bind(share_name)
             .execute(&self.pool)
             .await?;
-        let share_id = insert.last_insert_id().to_string();
 
-        Ok(Share::new(share_name.to_string(), Some(share_id)))
+        Ok(Share::new(
+            share_name.to_string(),
+            Some(share_id.to_string()),
+        ))
     }
 
     async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT 
-                id AS share_id,
+                id::text AS share_id,
                 name AS share_name
             FROM share
-            WHERE name = ?;
+            WHERE name = $1;
             "#,
         )
         .bind(share_name)
@@ -59,16 +64,16 @@ impl MySqlTableManager {
         .transpose()
     }
 
-    async fn select_shares(&self, cursor: &MySqlCursor) -> Result<Vec<Share>, sqlx::Error> {
+    async fn select_shares(&self, cursor: &PostgresCursor) -> Result<Vec<Share>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT 
-                id AS share_id,
+                id::text AS share_id,
                 name AS share_name
             FROM share
-            WHERE id > ?
+            WHERE id > $1
             ORDER BY id
-            LIMIT ?;
+            LIMIT $2;
             "#,
         )
         .bind(cursor.last_seen_id())
@@ -80,10 +85,20 @@ impl MySqlTableManager {
         .collect()
     }
 
+    pub async fn delete_share_by_name(&self, share_name: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM share WHERE name = $1;")
+            .bind(share_name)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM share;")
             .execute(&self.pool)
             .await?;
+
         Ok(())
     }
 
@@ -92,22 +107,23 @@ impl MySqlTableManager {
         share: &Share,
         schema_name: &str,
     ) -> Result<Schema, sqlx::Error> {
-        let insert = sqlx::query(
+        let schema_id = Uuid::new_v4();
+        sqlx::query(
             r#"
-            INSERT INTO `schema` (name, share_id) 
-            VALUES (?, ?);
+            INSERT INTO schema (id, name, share_id) 
+            VALUES ($1, $2, $3);
             "#,
         )
+        .bind(schema_id)
         .bind(schema_name)
-        .bind(share.id().unwrap())
+        .bind(Uuid::parse_str(share.id().unwrap()).unwrap())
         .execute(&self.pool)
         .await?;
-        let schema_id = insert.last_insert_id().to_string();
 
         Ok(Schema::new(
             share.clone(),
             schema_name.to_string(),
-            Some(schema_id),
+            Some(schema_id.to_string()),
         ))
     }
 
@@ -119,13 +135,13 @@ impl MySqlTableManager {
         sqlx::query(
             r#"
             SELECT 
-                share.id AS share_id,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                `schema`.id AS schema_id,
-                `schema`.name AS schema_name
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name
             FROM share
-            LEFT JOIN `schema` ON `schema`.share_id = share.id
-            WHERE share.name = ? AND `schema`.name = ?;
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            WHERE share.name = $1 AND "schema".name = $2;
             "#,
         )
         .bind(share_name)
@@ -139,20 +155,20 @@ impl MySqlTableManager {
     async fn select_schemas_by_share_name(
         &self,
         share_name: &str,
-        cursor: &MySqlCursor,
+        cursor: &PostgresCursor,
     ) -> Result<Vec<Schema>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT 
-                share.id AS share_id,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                `schema`.id AS schema_id,
-                `schema`.name AS schema_name
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name
             FROM share
-            LEFT JOIN `schema` ON `schema`.share_id = share.id
-            WHERE share.name = ? AND `schema`.id > ?
-            ORDER BY `schema`.id
-            LIMIT ?;
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            WHERE share.name = $1 AND "schema".id > $2
+            ORDER BY "schema".id
+            LIMIT $3;
             "#,
         )
         .bind(share_name)
@@ -165,10 +181,20 @@ impl MySqlTableManager {
         .collect()
     }
 
-    pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM `schema`;")
+    pub async fn delete_schema_by_name(&self, schema_name: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(r#"DELETE FROM "schema" WHERE name = $1;"#)
+            .bind(schema_name)
             .execute(&self.pool)
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
+        sqlx::query(r#"DELETE FROM "schema";"#)
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 
@@ -179,25 +205,26 @@ impl MySqlTableManager {
         storage_path: &str,
         storage_format: Option<&String>,
     ) -> Result<Table, sqlx::Error> {
-        let insert = sqlx::query(
+        let uuid = Uuid::new_v4();
+        sqlx::query(
             r#"
-            INSERT INTO `table` (name, schema_id, storage_path, storage_format) 
-            VALUES (?, ?, ?, ?);
+            INSERT INTO "table" (id, name, schema_id, storage_path, storage_format) 
+            VALUES ($1, $2, $3, $4, $5);
             "#,
         )
+        .bind(uuid)
         .bind(table_name)
-        .bind(schema.id().unwrap())
+        .bind(Uuid::parse_str(schema.id().unwrap()).unwrap())
         .bind(storage_path)
         .bind(storage_format)
         .execute(&self.pool)
         .await?;
-        let table_id = insert.last_insert_id().to_string();
 
         Ok(Table::new(
             schema.clone(),
             table_name.to_owned(),
             storage_path.to_owned(),
-            Some(table_id),
+            Some(uuid.to_string()),
             storage_format.cloned(),
         ))
     }
@@ -205,25 +232,25 @@ impl MySqlTableManager {
     async fn select_tables_by_share(
         &self,
         share_name: &str,
-        cursor: &MySqlCursor,
+        cursor: &PostgresCursor,
     ) -> Result<Vec<Table>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT
-                share.id AS share_id,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                `schema`.id AS schema_id,
-                `schema`.name AS schema_name,
-                `table`.id AS table_id,
-                `table`.name AS table_name,
-                `table`.storage_path AS storage_path,
-                `table`.storage_format AS storage_format
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name,
+                "table".id::text AS table_id,
+                "table".name AS table_name,
+                "table".storage_path AS storage_path,
+                "table".storage_format AS storage_format
             FROM share
-            LEFT JOIN `schema` ON `schema`.share_id = share.id
-            LEFT JOIN `table` ON `table`.schema_id = `schema`.id
-            WHERE share.name = ? AND `table`.id > ?
-            ORDER BY `table`.id
-            LIMIT ?;
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            LEFT JOIN "table" ON "table".schema_id = "schema".id
+            WHERE share.name = $1 AND "table".id > $2
+            ORDER BY "table".id
+            LIMIT $3;
             "#,
         )
         .bind(share_name)
@@ -240,25 +267,25 @@ impl MySqlTableManager {
         &self,
         share_name: &str,
         schema_name: &str,
-        cursor: &MySqlCursor,
+        cursor: &PostgresCursor,
     ) -> Result<Vec<Table>, sqlx::Error> {
         sqlx::query(
             r#"
             SELECT
-                share.id AS share_id,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                `schema`.id AS schema_id,
-                `schema`.name AS schema_name,
-                `table`.id AS table_id,
-                `table`.name AS table_name,
-                `table`.storage_path AS storage_path,
-                `table`.storage_format AS storage_format
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name,
+                "table".id::text AS table_id,
+                "table".name AS table_name,
+                "table".storage_path AS storage_path,
+                "table".storage_format AS storage_format
             FROM share
-            LEFT JOIN `schema` ON `schema`.share_id = share.id
-            LEFT JOIN `table` ON `table`.schema_id = `schema`.id
-            WHERE share.name = ? AND `schema`.name = ? AND `table`.id > ?
-            ORDER BY `table`.id
-            LIMIT ?;
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            LEFT JOIN "table" ON "table".schema_id = "schema".id
+            WHERE share.name = $1 AND "schema".name = $2 AND "table".id > $3
+            ORDER BY "table".id
+            LIMIT $4;
             "#,
         )
         .bind(share_name)
@@ -281,18 +308,18 @@ impl MySqlTableManager {
         sqlx::query(
             r#"
             SELECT
-                share.id AS share_id,
+                share.id::text AS share_id,
                 share.name AS share_name,
-                `schema`.id AS schema_id,
-                `schema`.name AS schema_name,
-                `table`.id AS table_id,
-                `table`.name AS table_name,
-                `table`.storage_path AS storage_path,
-                `table`.storage_format AS storage_format
+                "schema".id::text AS schema_id,
+                "schema".name AS schema_name,
+                "table".id::text AS table_id,
+                "table".name AS table_name,
+                "table".storage_path AS storage_path,
+                "table".storage_format AS storage_format
             FROM share
-            LEFT JOIN `schema` ON `schema`.share_id = share.id
-            LEFT JOIN `table` ON `table`.schema_id = `schema`.id
-            WHERE share.name = ? AND `schema`.name = ? AND `table`.name = ?;
+            LEFT JOIN "schema" ON "schema".share_id = share.id
+            LEFT JOIN "table" ON "table".schema_id = "schema".id
+            WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3;
             "#,
         )
         .bind(share_name)
@@ -304,32 +331,63 @@ impl MySqlTableManager {
         .transpose()
     }
 
+    pub async fn delete_table_by_name(
+        &self,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            DELETE FROM "table"
+            WHERE id IN (
+                SELECT "table".id
+                FROM share
+                LEFT JOIN "schema" ON "schema".share_id = share.id
+                LEFT JOIN "table" ON "table".schema_id = "schema".id
+                WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3
+            );
+            "#,
+        )
+        .bind(share_name)
+        .bind(schema_name)
+        .bind(table_name)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn delete_tables(&self) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM `table`;")
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            r#"
+            DELETE FROM "table";
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 }
 
-#[derive(Debug)]
-struct MySqlCursor {
-    last_seen_id: Option<u64>,
+struct PostgresCursor {
+    last_seen_id: Option<Uuid>,
     limit: Option<u32>,
 }
 
-impl MySqlCursor {
-    pub fn new(last_seen_id: Option<u64>, limit: Option<u32>) -> Self {
+impl PostgresCursor {
+    pub fn new(last_seen_id: Option<Uuid>, limit: Option<u32>) -> Self {
         Self {
             last_seen_id,
             limit,
         }
     }
 
-    pub fn last_seen_id(&self) -> u64 {
+    pub fn last_seen_id(&self) -> Uuid {
         match self.last_seen_id {
             Some(id) => id,
-            None => 0,
+            None => Uuid::nil(),
         }
     }
 
@@ -341,72 +399,70 @@ impl MySqlCursor {
     }
 }
 
-use core::str::FromStr;
-
-impl TryFrom<ListCursor> for MySqlCursor {
+impl TryFrom<ListCursor> for PostgresCursor {
     type Error = &'static str;
     fn try_from(cursor: ListCursor) -> Result<Self, Self::Error> {
         let last_seen_id = cursor
             .page_token()
-            .map(|token| u64::from_str(token).map_err(|_| "invalid page token"))
+            .map(|token| Uuid::parse_str(token).map_err(|_| "invalid page token"))
             .transpose()?;
-        let pg_cursor = MySqlCursor::new(last_seen_id, cursor.max_results());
+        let pg_cursor = PostgresCursor::new(last_seen_id, cursor.max_results());
         Ok(pg_cursor)
     }
 }
 
-impl TryFrom<MySqlRow> for Share {
+impl TryFrom<PgRow> for Share {
     type Error = sqlx::Error;
 
-    fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
+    fn try_from(row: PgRow) -> Result<Self, Self::Error> {
         let name: String = row.try_get("share_name")?;
-        let id: i32 = row.try_get("share_id")?;
-        Ok(Share::new(name, Some(id.to_string())))
+        let id: String = row.try_get("share_id")?;
+        Ok(Share::new(name, Some(id)))
     }
 }
 
-impl TryFrom<MySqlRow> for Schema {
+impl TryFrom<PgRow> for Schema {
     type Error = sqlx::Error;
 
-    fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
-        let share_id: i32 = row.try_get("share_id")?;
+    fn try_from(row: PgRow) -> Result<Self, Self::Error> {
+        let share_id: String = row.try_get("share_id")?;
         let share_name: String = row.try_get("share_name")?;
-        let schema_id: i32 = row.try_get("schema_id")?;
+        let schema_id: String = row.try_get("schema_id")?;
         let schema_name: String = row.try_get("schema_name")?;
-        let share = Share::new(share_name, Some(share_id.to_string()));
-        Ok(Schema::new(share, schema_name, Some(schema_id.to_string())))
+        let share = Share::new(share_name, Some(share_id));
+        Ok(Schema::new(share, schema_name, Some(schema_id)))
     }
 }
 
-impl TryFrom<MySqlRow> for Table {
+impl TryFrom<PgRow> for Table {
     type Error = sqlx::Error;
 
-    fn try_from(row: MySqlRow) -> Result<Self, Self::Error> {
-        let share_id: i32 = row.try_get("share_id")?;
+    fn try_from(row: PgRow) -> Result<Self, Self::Error> {
+        let share_id: String = row.try_get("share_id")?;
         let share_name: String = row.try_get("share_name")?;
-        let schema_id: i32 = row.try_get("schema_id")?;
+        let schema_id: String = row.try_get("schema_id")?;
         let schema_name: String = row.try_get("schema_name")?;
-        let table_id: i32 = row.try_get("table_id")?;
+        let table_id: String = row.try_get("table_id")?;
         let table_name: String = row.try_get("table_name")?;
         let storage_path: String = row.try_get("storage_path")?;
         let storage_format: Option<String> = row.try_get("storage_format")?;
 
-        let share = Share::new(share_name, Some(share_id.to_string()));
-        let schema = Schema::new(share, schema_name, Some(schema_id.to_string()));
+        let share = Share::new(share_name, Some(share_id));
+        let schema = Schema::new(share, schema_name, Some(schema_id));
         Ok(Table::new(
             schema,
             table_name,
             storage_path,
-            Some(table_id.to_string()),
+            Some(table_id),
             storage_format,
         ))
     }
 }
 
 #[async_trait]
-impl TableManager for MySqlTableManager {
+impl TableManager for PostgresTableManager {
     async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, TableManagerError> {
-        let pg_cursor = MySqlCursor::try_from(cursor.clone())
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| TableManagerError::MalformedContinuationToken)?;
         let shares = self.select_shares(&pg_cursor).await?;
 
@@ -432,7 +488,7 @@ impl TableManager for MySqlTableManager {
         share_name: &str,
         cursor: &ListCursor,
     ) -> Result<List<Schema>, TableManagerError> {
-        let pg_cursor = MySqlCursor::try_from(cursor.clone())
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| TableManagerError::MalformedContinuationToken)?;
         let schemas = self
             .select_schemas_by_share_name(share_name, &pg_cursor)
@@ -452,7 +508,7 @@ impl TableManager for MySqlTableManager {
         share_name: &str,
         cursor: &ListCursor,
     ) -> Result<List<Table>, TableManagerError> {
-        let pg_cursor = MySqlCursor::try_from(cursor.clone())
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| TableManagerError::MalformedContinuationToken)?;
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
@@ -471,7 +527,7 @@ impl TableManager for MySqlTableManager {
         schema_name: &str,
         cursor: &ListCursor,
     ) -> Result<List<Table>, TableManagerError> {
-        let pg_cursor = MySqlCursor::try_from(cursor.clone())
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| TableManagerError::MalformedContinuationToken)?;
         let tables = self
             .select_tables_by_schema(share_name, schema_name, &pg_cursor)
@@ -521,12 +577,12 @@ impl TableManager for MySqlTableManager {
 }
 
 // TODO: Sort out Error handling and conversion
-// impl From<sqlx::Error> for TableManagerError {
-//     fn from(err: sqlx::Error) -> Self {
-//         match err {
-//             _ => TableManagerError::Other {
-//                 reason: err.to_string(),
-//             },
-//         }
-//     }
-// }
+impl From<sqlx::Error> for TableManagerError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            _ => TableManagerError::Other {
+                reason: err.to_string(),
+            },
+        }
+    }
+}

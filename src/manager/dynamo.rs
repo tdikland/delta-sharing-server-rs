@@ -54,6 +54,7 @@ use super::{List, ListCursor, TableManager, TableManagerError};
 // 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
 // 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
 
+#[derive(Debug)]
 pub struct DynamoTableManager {
     client: Client,
     table_name: String,
@@ -67,6 +68,10 @@ impl DynamoTableManager {
             table_name,
             index_name,
         }
+    }
+
+    pub fn client(&self) -> &Client {
+        &self.client
     }
 
     pub async fn put_share(&self, share: Share) -> Result<Share, DynamoError> {

@@ -2,10 +2,11 @@ use axum::http::header::AUTHORIZATION;
 use insta::assert_snapshot;
 
 mod common;
+use common::server::TestClient;
 
 #[tokio::test]
 async fn list_shares_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -19,7 +20,7 @@ async fn list_shares_success() {
 
 #[tokio::test]
 async fn list_shares_pagination() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares?maxResults=1")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -44,7 +45,7 @@ async fn list_shares_pagination() {
 
 #[tokio::test]
 async fn list_shares_bad_page_token() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares?pageToken=malformed_token")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -58,7 +59,7 @@ async fn list_shares_bad_page_token() {
 
 #[tokio::test]
 async fn get_share_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -72,7 +73,7 @@ async fn get_share_success() {
 
 #[tokio::test]
 async fn get_share_not_found() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/not-existing-share")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -86,7 +87,7 @@ async fn get_share_not_found() {
 
 #[tokio::test]
 async fn list_schemas_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1/schemas")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -100,7 +101,7 @@ async fn list_schemas_success() {
 
 #[tokio::test]
 async fn list_tables_in_schema_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1/schemas/schema1/tables")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -114,7 +115,7 @@ async fn list_tables_in_schema_success() {
 
 #[tokio::test]
 async fn list_tables_in_share_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1/all-tables")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -128,7 +129,7 @@ async fn list_tables_in_share_success() {
 
 #[tokio::test]
 async fn get_table_version_latest_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1/schemas/schema1/tables/table1/version")
         .header(AUTHORIZATION, "Bearer foo_token")
@@ -142,7 +143,7 @@ async fn get_table_version_latest_success() {
 
 #[tokio::test]
 async fn get_table_metadata_success() {
-    let test_client = common::TestClient::new().await;
+    let test_client = TestClient::new().await;
     let response = test_client
         .get("/shares/share1/schemas/schema1/tables/table1/metadata")
         .header(AUTHORIZATION, "Bearer foo_token")
