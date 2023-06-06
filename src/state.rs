@@ -186,10 +186,10 @@ mod test {
     use crate::{
         manager::{List, MockTableManager, TableManagerError},
         protocol::{
-            securables::{Schema, Share, Table},
-            table::{DataFile, FileFormat, Metadata, Protocol},
+            {Schema, Share, Table},
+            {UnsignedDataFile, FileFormat, Metadata, Protocol}, DataFileKind,
         },
-        reader::{MockTableReader, TableData, TableMetadata},
+        reader::{MockTableReader, UnsignedTableData, TableMetadata},
         signer::MockUrlSigner,
     };
     use insta::assert_json_snapshot;
@@ -360,15 +360,15 @@ mod test {
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_ingredients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
                     Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
                     None,
                 ));
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_patients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     None,
                 ));
                 Ok(tables)
@@ -403,15 +403,15 @@ mod test {
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_ingredients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
                     Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
                     None,
                 ));
                 tables.push(Table::new(
                     schema.clone(),
                     "vaccine_patients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     None,
                 ));
                 Ok(tables)
@@ -445,8 +445,8 @@ mod test {
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("DELTA".to_owned()),
                 ))
             });
@@ -561,8 +561,8 @@ mod test {
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("DELTA".to_owned()),
                 ))
             });
@@ -623,8 +623,8 @@ mod test {
                 Ok(Table::new(
                     schema,
                     "vaccine_patients".to_owned(),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
                     Some("DELTA".to_owned()),
                 ))
             });
@@ -634,7 +634,7 @@ mod test {
             .expect_get_table_data()
             .with(eq("s3://vaccine_share/acme_vaccine_data/vaccine_patients"), eq(0u64), eq(None), eq(None))
             .once()
-            .return_const(Ok(TableData {
+            .return_const(Ok(UnsignedTableData {
                 version: 123u64,
                 protocol: Protocol {
                     min_reader_version: 1,
@@ -653,22 +653,26 @@ mod test {
                     size: None,
                     num_files: None,
                 },
-                data: vec![DataFile {
+                data: vec![UnsignedDataFile {
+                    kind: DataFileKind::File,
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file1".to_owned(), 
                     id: "8b0086f2-7b27-4935-ac5a-8ed6215a6640".to_owned(), 
                     partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]), 
                     size: 573, 
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()), 
                     version: None, 
-                    timestamp: None 
-                }, DataFile {
+                    timestamp: None,
+                    expiration_timestamp: None 
+                }, UnsignedDataFile {
+                    kind: DataFileKind::File,
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file2".to_owned(), 
                     id: "591723a8-6a27-4240-a90e-57426f4736d2".to_owned(), 
                     partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]), 
                     size: 573, 
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()), 
                     version: None, 
-                    timestamp: None 
+                    timestamp: None ,
+                    expiration_timestamp: None
                 }],
             }));
 

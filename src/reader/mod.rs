@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    protocol::table::{ChangeFile, DataFile, Metadata, Protocol, SignedChangeFile, SignedDataFile},
+    protocol::{DataFile, Metadata, Protocol},
     signer::UrlSigner,
 };
 
@@ -29,13 +29,13 @@ pub trait TableReader: Send + Sync {
         version: u64,
         limit: Option<u64>,
         predicates: Option<String>,
-    ) -> Result<TableData, TableReaderError>;
+    ) -> Result<UnsignedTableData, TableReaderError>;
 
     async fn get_table_changes(
         &self,
         storage_path: &str,
         range: VersionRange,
-    ) -> Result<TableChanges, TableReaderError>;
+    ) -> Result<UnsignedTableData, TableReaderError>;
 }
 
 #[derive(Debug, Clone)]
@@ -71,26 +71,22 @@ pub struct TableMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TableData {
+pub struct UnsignedTableData {
     pub version: u64,
     pub protocol: Protocol,
     pub metadata: Metadata,
     pub data: Vec<DataFile>,
 }
 
-impl TableData {
-    pub async fn sign(self, signer: &dyn UrlSigner) -> SignedTableData {
-        let mut signed_data = vec![];
-        for file in self.data {
-            let signed_file = file.sign(signer).await;
-            signed_data.push(signed_file);
-        }
+impl UnsignedTableData {
+    pub async fn sign(mut self, signer: &dyn UrlSigner) -> SignedTableData {
+        self.data.iter_mut().map(|file| file.sign(signer));
 
         SignedTableData {
             version: self.version,
             protocol: self.protocol,
             metadata: self.metadata,
-            data: signed_data,
+            data: self.data,
         }
     }
 }
@@ -100,38 +96,5 @@ pub struct SignedTableData {
     pub version: u64,
     pub protocol: Protocol,
     pub metadata: Metadata,
-    pub data: Vec<SignedDataFile>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TableChanges {
-    pub version: u64,
-    pub protocol: Protocol,
-    pub metadata: Metadata,
-    pub changes: Vec<ChangeFile>,
-}
-
-impl TableChanges {
-    pub async fn sign(self, signer: &dyn UrlSigner) -> SignedTableChanges {
-        let mut signed_changes = vec![];
-        for file in self.changes {
-            let signed_file = file.sign(signer).await;
-            signed_changes.push(signed_file);
-        }
-
-        SignedTableChanges {
-            version: self.version,
-            protocol: self.protocol,
-            metadata: self.metadata,
-            changes: signed_changes,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SignedTableChanges {
-    pub version: u64,
-    pub protocol: Protocol,
-    pub metadata: Metadata,
-    pub changes: Vec<SignedChangeFile>,
+    pub data: Vec<DataFile>,
 }

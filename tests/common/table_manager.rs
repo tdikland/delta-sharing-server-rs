@@ -8,7 +8,7 @@ use delta_sharing_server_rs::{
     manager::{
         dynamo::DynamoTableManager, mysql::MySqlTableManager, postgres::PostgresTableManager,
     },
-    protocol::securables::{Schema, Share, Table},
+    protocol::{Schema, Share, Table},
 };
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};
 use std::{env, time::Duration};
@@ -423,8 +423,8 @@ impl Manager {
                     Table::new(
                         schema,
                         table_name,
-                        storage_path,
                         Some(table_id),
+                        storage_path,
                         Some(table_format),
                     )
                 }

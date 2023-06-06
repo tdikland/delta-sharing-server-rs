@@ -5,7 +5,7 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use crate::protocol::securables::{Schema, Share, Table};
+use crate::protocol::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
 
@@ -223,8 +223,8 @@ impl PostgresTableManager {
         Ok(Table::new(
             schema.clone(),
             table_name.to_owned(),
-            storage_path.to_owned(),
             Some(uuid.to_string()),
+            storage_path.to_owned(),
             storage_format.cloned(),
         ))
     }
@@ -452,8 +452,8 @@ impl TryFrom<PgRow> for Table {
         Ok(Table::new(
             schema,
             table_name,
-            storage_path,
             Some(table_id),
+            storage_path,
             storage_format,
         ))
     }
@@ -467,7 +467,11 @@ impl TableManager for PostgresTableManager {
         let shares = self.select_shares(&pg_cursor).await?;
 
         let next_page_token = if shares.len() == pg_cursor.limit() as usize {
-            shares.iter().last().and_then(|s| s.id().cloned())
+            shares
+                .iter()
+                .last()
+                .and_then(|s| s.id())
+                .map(|id| id.to_string())
         } else {
             None
         };
@@ -495,7 +499,11 @@ impl TableManager for PostgresTableManager {
             .await?;
 
         let next_page_token = if schemas.len() == pg_cursor.limit() as usize {
-            schemas.iter().last().and_then(|s| s.id().cloned())
+            schemas
+                .iter()
+                .last()
+                .and_then(|s| s.id())
+                .map(|id| id.to_string())
         } else {
             None
         };
@@ -513,7 +521,11 @@ impl TableManager for PostgresTableManager {
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
         let next_page_token = if tables.len() == pg_cursor.limit() as usize {
-            tables.iter().last().and_then(|s| s.table_id().cloned())
+            tables
+                .iter()
+                .last()
+                .and_then(|s| s.id())
+                .map(|id| id.to_string())
         } else {
             None
         };
@@ -534,7 +546,11 @@ impl TableManager for PostgresTableManager {
             .await?;
 
         let next_page_token = if tables.len() == pg_cursor.limit() as usize {
-            tables.iter().last().and_then(|s| s.table_id().cloned())
+            tables
+                .iter()
+                .last()
+                .and_then(|s| s.id())
+                .map(|id| id.to_string())
         } else {
             None
         };

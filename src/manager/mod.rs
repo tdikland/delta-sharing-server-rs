@@ -6,7 +6,7 @@ pub mod dynamo;
 pub mod mysql;
 pub mod postgres;
 
-use crate::protocol::securables::{Schema, Share, Table};
+use crate::protocol::{Schema, Share, Table};
 
 #[mockall::automock]
 #[async_trait]

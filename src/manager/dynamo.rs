@@ -30,7 +30,7 @@ use aws_sdk_dynamodb::{
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::securables::{Schema, Share, Table};
+use crate::protocol::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
 
@@ -518,8 +518,8 @@ impl TryFrom<&HashMap<String, AttributeValue>> for Table {
         Ok(Table::new(
             schema,
             table_name.to_owned(),
-            storage_path.to_owned(),
             table_id,
+            storage_path.to_owned(),
             table_format,
         ))
     }

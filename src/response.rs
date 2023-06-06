@@ -10,9 +10,9 @@ use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 
 use crate::manager::List;
-use crate::protocol::securables::{Schema, Share, Table};
-use crate::protocol::table::{Metadata, Protocol, SignedChangeFile, SignedDataFile};
-use crate::reader::{SignedTableChanges, SignedTableData, TableMetadata, TableVersion};
+use crate::protocol::{Metadata, Protocol, SignedDataFile};
+use crate::protocol::{Schema, Share, Table};
+use crate::reader::{SignedTableData, TableMetadata, TableVersion};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,7 +136,7 @@ impl From<List<Table>> for ListTablesResponse {
                     schema: t.schema_name().to_owned(),
                     share: t.share_name().to_owned(),
                     share_id: t.share_id().map(|s| s.to_owned()),
-                    id: t.table_id().map(|s| s.to_owned()),
+                    id: t.id().map(|s| s.to_owned()),
                 })
                 .collect::<Vec<_>>(),
             next_page_token: value.next_page_token().cloned(),
@@ -179,7 +179,7 @@ pub enum JsonWrapper {
     #[serde(rename = "metaData")]
     Metadata(Metadata),
     File(SignedDataFile),
-    Add(SignedChangeFile),
+    // Add(SignedChangeFile),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,18 +238,18 @@ impl From<SignedTableData> for TableInfoResponse {
     }
 }
 
-impl From<SignedTableChanges> for TableInfoResponse {
-    fn from(value: SignedTableChanges) -> Self {
-        let mut lines = vec![];
-        lines.push(JsonWrapper::Protocol(value.protocol));
-        lines.push(JsonWrapper::Metadata(value.metadata));
-        for f in value.changes {
-            lines.push(JsonWrapper::Add(f))
-        }
+// impl From<SignedTableChanges> for TableInfoResponse {
+//     fn from(value: SignedTableChanges) -> Self {
+//         let mut lines = vec![];
+//         lines.push(JsonWrapper::Protocol(value.protocol));
+//         lines.push(JsonWrapper::Metadata(value.metadata));
+//         for f in value.changes {
+//             lines.push(JsonWrapper::Add(f))
+//         }
 
-        Self {
-            version: value.version,
-            lines,
-        }
-    }
-}
+//         Self {
+//             version: value.version,
+//             lines,
+//         }
+//     }
+// }

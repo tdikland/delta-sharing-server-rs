@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::table::{DataFile, FileFormat, Metadata, Protocol};
+use crate::protocol::{Add, DataFile, FileFormat, Metadata, Protocol};
 
 use super::{
-    TableChanges, TableData, TableMetadata, TableReader, TableReaderError, TableVersion, Version,
+    TableMetadata, TableReader, TableReaderError, TableVersion, UnsignedTableData, Version,
     VersionRange,
 };
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeltaTableReader;
 
 impl DeltaTableReader {
@@ -76,7 +77,7 @@ impl TableReader for DeltaTableReader {
         _version: u64,
         _limit: Option<u64>,
         _predicates: Option<String>,
-    ) -> Result<TableData, TableReaderError> {
+    ) -> Result<UnsignedTableData, TableReaderError> {
         let delta_table = deltalake::open_table(storage_path).await?;
 
         let min_reader_version = delta_table.get_min_reader_version() as u32;
@@ -101,7 +102,7 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for file in delta_table.get_state().files() {
             let url = format!("{}/{}", storage_path, file.path);
-            let data_file = DataFile {
+            let data_file = DataFile::Add(Add {
                 url,
                 id: "some_id".to_string(),
                 partition_values: HashMap::new(),
@@ -109,11 +110,12 @@ impl TableReader for DeltaTableReader {
                 stats: None,
                 version: None,
                 timestamp: None,
-            };
+                expiration_timestamp: None,
+            });
             table_files.push(data_file);
         }
 
-        Ok(TableData {
+        Ok(UnsignedTableData {
             version: delta_table.version() as u64,
             protocol: table_protocol,
             metadata: table_metadata,
@@ -125,7 +127,7 @@ impl TableReader for DeltaTableReader {
         &self,
         storage_path: &str,
         _range: VersionRange,
-    ) -> Result<TableChanges, TableReaderError> {
+    ) -> Result<UnsignedTableData, TableReaderError> {
         let delta_table = deltalake::open_table(storage_path).await?;
 
         let min_reader_version = delta_table.get_min_reader_version() as u32;
@@ -150,7 +152,8 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for file in delta_table.get_state().files() {
             let url = format!("{}/{}", storage_path, file.path);
-            let data_file = DataFile {
+            let data_file = UnsignedDataFile {
+                kind: DataFileKind::Add,
                 url,
                 id: "some_id".to_string(),
                 partition_values: HashMap::new(),
@@ -158,15 +161,16 @@ impl TableReader for DeltaTableReader {
                 stats: None,
                 version: None,
                 timestamp: None,
+                expiration_timestamp: None,
             };
             table_files.push(data_file);
         }
 
-        Ok(TableChanges {
+        Ok(UnsignedTableData {
             version: delta_table.version() as u64,
             protocol: table_protocol,
             metadata: table_metadata,
-            changes: vec![],
+            data: vec![],
         })
     }
 }

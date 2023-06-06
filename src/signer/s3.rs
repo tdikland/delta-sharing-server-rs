@@ -21,7 +21,7 @@ impl UrlSigner for S3UrlSigner {
     async fn sign(&self, path: &str) -> String {
         let uri = Uri::try_from(path).unwrap();
         let bucket = uri.host().unwrap();
-        let key = uri.path();
+        let key = &uri.path()[1..];
 
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(3600)).unwrap();
         let req = self
