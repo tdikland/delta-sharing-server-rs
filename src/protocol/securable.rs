@@ -192,7 +192,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.share_name(), "my-share");
     /// ```
     pub fn share_name(&self) -> &str {
@@ -208,7 +208,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", Some("my-share-id"));
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.share_id(), Some("my-share-id"));
     /// ```
     pub fn share_id(&self) -> Option<&str> {
@@ -224,7 +224,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.schema_name(), "my-schema");
     /// ```
     pub fn schema_name(&self) -> &str {
@@ -240,7 +240,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", Some("my-schema-id"));
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.schema_id(), Some("my-schema-id"));
     /// ```
     pub fn schema_id(&self) -> Option<&str> {
@@ -256,7 +256,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.name(), "my-table");
     /// ```
     pub fn name(&self) -> &str {
@@ -272,7 +272,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", Some("my-table-id"), None);
+    /// let table = Table::new(schema, "my-table", Some("my-table-id"), "my-storage-path", None);
     /// assert_eq!(table.id(), Some("my-table-id"));
     /// ```
     pub fn id(&self) -> Option<&str> {
@@ -288,7 +288,7 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.storage_path(), "my-storage-path");
     /// ```
     pub fn storage_path(&self) -> &str {
@@ -304,12 +304,12 @@ impl Table {
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, Some("parquet"));
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", Some("parquet"));
     /// assert_eq!(table.format(), "parquet");
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
-    /// let table = Table::new(schema, "my-table", "my-storage-path", None, None);
+    /// let table = Table::new(schema, "my-table", None, "my-storage-path", None);
     /// assert_eq!(table.format(), "DELTA");
     /// ```
     pub fn format(&self) -> &str {

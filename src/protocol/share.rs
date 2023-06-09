@@ -43,7 +43,7 @@ impl ListCursor {
     /// use delta_sharing_server_rs::protocol::share::ListCursor;
     ///
     /// let cursor = ListCursor::new(None, Some(String::from("page1")));
-    /// assert_eq!(cursor.page_token(), Some(String::from("page1")));
+    /// assert_eq!(cursor.page_token(), Some("page1"));
     /// ```
     pub fn page_token(&self) -> Option<&str> {
         self.page_token.as_deref()
