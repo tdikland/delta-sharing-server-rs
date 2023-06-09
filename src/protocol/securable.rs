@@ -1,3 +1,5 @@
+//! Basic types for describing shared objects
+
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};

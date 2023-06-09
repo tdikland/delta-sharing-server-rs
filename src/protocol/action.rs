@@ -1,3 +1,5 @@
+//! Basic types for describing table data and metadata
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -60,44 +62,6 @@ pub struct Metadata {
 pub struct FileFormat {
     /// The format of the data files backing the shared table.
     pub provider: String,
-}
-
-/// A representation of data or mutation in a table referenced using an object
-/// store url.
-///
-/// A table is represented as a set of files that together are the full table.
-/// Every data file has a reference to the underlying object store in its url
-/// field.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum UnsignedDataFile {
-    /// A file containing data part of the table.
-    File(File),
-    /// A file containing data that was added to the table in this version.
-    Add(Add),
-    /// A file containing data that was changed in this version of the table.
-    Cdf(Cdf),
-    /// A file containing data that was removed since the last table version.
-    Remove(Remove),
-}
-
-/// A representation of data or mutation in a table reachable with a presigned
-/// url.
-///
-/// A table is represented as a set of files that together are the full table.
-/// Every data file has a presigned url that can be used to directly access the
-/// data file.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SignedDataFile {
-    /// A file containing data part of the table.
-    File(File),
-    /// A file containing data that was added to the table in this version.
-    Add(Add),
-    /// A file containing data that was changed in this version of the table.
-    Cdf(Cdf),
-    /// A file containing data that was removed since the last table version.
-    Remove(Remove),
 }
 
 /// Representation of data that is part of a table.
