@@ -3,9 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    protocol::{
-        Metadata, Protocol, TableMetadata, TableVersionNumber, UnsignedTableData, Version,
-        VersionRange,
+    protocol::table::{
+        TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
     },
     signer::UrlSigner,
 };
@@ -45,59 +44,3 @@ pub trait TableReader: Send + Sync {
 pub enum TableReaderError {
     Other,
 }
-
-// #[derive(Debug, Clone, Copy, PartialEq)]
-// pub enum Version {
-//     Latest,
-//     Timestamp(DateTime<Utc>),
-// }
-
-// #[derive(Debug, Clone, Copy)]
-// pub enum VersionRange {
-//     Version {
-//         start: u64,
-//         end: u64,
-//     },
-//     Timestamp {
-//         start: DateTime<Utc>,
-//         end: DateTime<Utc>,
-//     },
-// }
-
-// pub type TableVersionNumber = u64;
-
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-// pub struct TableMetadata {
-//     pub version: u64,
-//     pub protocol: Protocol,
-//     pub metadata: Metadata,
-// }
-
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-// pub struct UnsignedTableData {
-//     pub version: u64,
-//     pub protocol: Protocol,
-//     pub metadata: Metadata,
-//     pub data: Vec<DataFile>,
-// }
-
-// impl UnsignedTableData {
-//     pub async fn sign(mut self, signer: &dyn UrlSigner) -> SignedTableData {
-//         self.data.iter_mut().map(|file| file.sign(signer));
-
-//         SignedTableData {
-//             version: self.version,
-//             protocol: self.protocol,
-//             metadata: self.metadata,
-//             data: self.data,
-//         }
-//     }
-// }
-
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-// pub struct SignedTableData {
-//     pub version: u64,
-//     pub protocol: Protocol,
-//     pub metadata: Metadata,
-//     pub data: Vec<DataFile>,
-// }

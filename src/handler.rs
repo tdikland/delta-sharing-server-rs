@@ -6,7 +6,7 @@ use axum_macros::debug_handler;
 use crate::{
     error::{Result, ServerError},
     extract::{Pagination, TableChangePredicates, TableDataPredicates, TableVersion},
-    reader::Version,
+    protocol::table::Version,
     response::{
         GetShareResponse, ListSchemasResponse, ListSharesResponse, ListTablesResponse,
         TableInfoResponse, TableVersionResponse,
@@ -146,10 +146,12 @@ pub async fn get_table_data(
         .ok_or(ServerError::UnsupportedTableStorage {
             storage: String::from("S3"),
         })?;
-    let signed_table_data = table_data.sign(signer.deref()).await;
 
-    let response = TableInfoResponse::from(signed_table_data);
-    Ok(response)
+    todo!()
+    // let signed_table_data = table_data.sign(signer.deref()).await;
+
+    // let response = TableInfoResponse::from(signed_table_data);
+    // Ok(response)
 }
 
 #[debug_handler]

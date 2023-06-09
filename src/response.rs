@@ -10,9 +10,9 @@ use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 
 use crate::manager::List;
-use crate::protocol::{DataFile, Metadata, Protocol};
+use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
+use crate::protocol::{Metadata, Protocol};
 use crate::protocol::{Schema, Share, Table};
-use crate::reader::{SignedTableData, TableMetadata, TableVersion};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,8 +160,8 @@ pub struct TableVersionResponse {
     version: u64,
 }
 
-impl From<TableVersion> for TableVersionResponse {
-    fn from(version: TableVersion) -> Self {
+impl From<TableVersionNumber> for TableVersionResponse {
+    fn from(version: TableVersionNumber) -> Self {
         Self { version }
     }
 }
@@ -184,7 +184,7 @@ pub enum JsonWrapper {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TableInfoResponse {
-    version: TableVersion,
+    version: TableVersionNumber,
     lines: Vec<JsonWrapper>,
 }
 

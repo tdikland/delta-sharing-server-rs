@@ -1,12 +1,14 @@
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use deltalake::DeltaTableError;
 
-use crate::protocol::{
-    Add, File, FileFormat, Metadata, Protocol, TableMetadata, TableVersionNumber, UnsignedDataFile,
-    UnsignedTableData, Version, VersionRange,
+use crate::protocol::table::{
+    TableMetadata, TableVersionNumber, UnsignedDataFile, UnsignedTableData, Version, VersionRange,
 };
+use crate::protocol::{Add, File, FileFormat, Metadata, Protocol};
 
 use super::{TableReader, TableReaderError};
 
@@ -107,14 +109,14 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for file in delta_table.get_state().files() {
             let url = format!("{}/{}", storage_path, file.path);
-            let data_file = DataFile::Add(Add {
+            let data_file = UnsignedDataFile::Add(Add {
                 url,
                 id: "some_id".to_string(),
                 partition_values: HashMap::new(),
                 size: 6,
                 stats: None,
-                version: None,
-                timestamp: None,
+                version: 0,
+                timestamp: String::from("0"),
                 expiration_timestamp: None,
             });
             table_files.push(data_file);
@@ -181,7 +183,7 @@ impl TableReader for DeltaTableReader {
 
 impl From<DeltaTableError> for TableReaderError {
     fn from(value: DeltaTableError) -> Self {
-        dbg!(&value);
+        // TODO: meaningful error handling
         match value {
             _ => TableReaderError::Other,
         }
