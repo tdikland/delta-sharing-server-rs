@@ -3,12 +3,17 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::{Add, DataFile, FileFormat, Metadata, Protocol};
-
-use super::{
-    TableMetadata, TableReader, TableReaderError, TableVersion, UnsignedTableData, Version,
-    VersionRange,
+use crate::protocol::{
+    Add, File, FileFormat, Metadata, Protocol, TableMetadata, TableVersionNumber, UnsignedDataFile,
+    UnsignedTableData, Version, VersionRange,
 };
+
+use super::{TableReader, TableReaderError};
+
+// use super::{
+//     TableMetadata, TableReader, TableReaderError, TableVersion, UnsignedTableData, Version,
+//     VersionRange,
+// };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeltaTableReader;
@@ -25,7 +30,7 @@ impl TableReader for DeltaTableReader {
         &self,
         storage_path: &str,
         version: Version,
-    ) -> Result<TableVersion, TableReaderError> {
+    ) -> Result<TableVersionNumber, TableReaderError> {
         match version {
             Version::Latest => {
                 let delta_table = deltalake::open_table(storage_path).await?;
@@ -152,8 +157,7 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for file in delta_table.get_state().files() {
             let url = format!("{}/{}", storage_path, file.path);
-            let data_file = UnsignedDataFile {
-                kind: DataFileKind::Add,
+            let data_file = UnsignedDataFile::File(File {
                 url,
                 id: "some_id".to_string(),
                 partition_values: HashMap::new(),
@@ -162,7 +166,7 @@ impl TableReader for DeltaTableReader {
                 version: None,
                 timestamp: None,
                 expiration_timestamp: None,
-            };
+            });
             table_files.push(data_file);
         }
 

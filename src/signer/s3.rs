@@ -6,11 +6,13 @@ use axum::http::Uri;
 
 use super::UrlSigner;
 
+/// Signing configuration for the S3 object store.
 pub struct S3UrlSigner {
     client: Client,
 }
 
 impl S3UrlSigner {
+    /// Create a new `S3UrlSigner` from the provided S3 SDK client.
     pub fn new(client: Client) -> Self {
         Self { client }
     }

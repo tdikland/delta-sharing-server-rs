@@ -10,7 +10,7 @@ use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 
 use crate::manager::List;
-use crate::protocol::{Metadata, Protocol, SignedDataFile};
+use crate::protocol::{DataFile, Metadata, Protocol};
 use crate::protocol::{Schema, Share, Table};
 use crate::reader::{SignedTableData, TableMetadata, TableVersion};
 
