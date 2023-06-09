@@ -2,8 +2,8 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
     error::ServerError,
-    manager::{ListCursor, TableManager},
-    protocol::table::Version,
+    manager::TableManager,
+    protocol::{share::ListCursor, table::Version},
     reader::TableReader,
     response::{
         GetShareResponse, ListSchemasResponse, ListSharesResponse, ListTablesResponse,

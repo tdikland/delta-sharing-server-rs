@@ -30,7 +30,7 @@ use aws_sdk_dynamodb::{
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{Schema, Share, Table};
+use crate::protocol::securable::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
 

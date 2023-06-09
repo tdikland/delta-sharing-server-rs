@@ -9,10 +9,10 @@ use axum::{
 use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 
-use crate::manager::List;
+use crate::protocol::action::{Metadata, Protocol};
+use crate::protocol::securable::{Schema, Share, Table};
+use crate::protocol::share::List;
 use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
-use crate::protocol::{Metadata, Protocol};
-use crate::protocol::{Schema, Share, Table};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

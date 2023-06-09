@@ -1,21 +1,14 @@
 use std::collections::HashMap;
-use std::time::SystemTime;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use deltalake::DeltaTableError;
 
+use crate::protocol::action::{Add, File, FileFormat, Metadata, Protocol};
 use crate::protocol::table::{
     TableMetadata, TableVersionNumber, UnsignedDataFile, UnsignedTableData, Version, VersionRange,
 };
-use crate::protocol::{Add, File, FileFormat, Metadata, Protocol};
 
 use super::{TableReader, TableReaderError};
-
-// use super::{
-//     TableMetadata, TableReader, TableReaderError, TableVersion, UnsignedTableData, Version,
-//     VersionRange,
-// };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeltaTableReader;

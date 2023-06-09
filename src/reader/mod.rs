@@ -1,12 +1,7 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 
-use crate::{
-    protocol::table::{
-        TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
-    },
-    signer::UrlSigner,
+use crate::protocol::table::{
+    TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
 };
 
 pub mod delta;

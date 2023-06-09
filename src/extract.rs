@@ -5,7 +5,7 @@ use axum::{extract::FromRequestParts, http::request::Parts, Json};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{error::ServerError, manager::ListCursor};
+use crate::{error::ServerError, protocol::share::ListCursor};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Pagination(pub ListCursor);
