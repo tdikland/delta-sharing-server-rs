@@ -72,7 +72,7 @@ impl SharingServerState {
         &self,
         cursor: &ListCursor,
     ) -> Result<ListSharesResponse, ServerError> {
-        let shares = self.shared_table_manager.list_shares(&cursor).await?;
+        let shares = self.shared_table_manager.list_shares(cursor).await?;
         Ok(shares.into())
     }
 
@@ -90,7 +90,7 @@ impl SharingServerState {
     ) -> Result<ListSchemasResponse, ServerError> {
         let schemas = self
             .shared_table_manager
-            .list_schemas(share_name, &cursor)
+            .list_schemas(share_name, cursor)
             .await?;
         Ok(schemas.into())
     }
@@ -103,7 +103,7 @@ impl SharingServerState {
     ) -> Result<ListTablesResponse, ServerError> {
         let tables = self
             .shared_table_manager
-            .list_tables_in_share(share_name, &cursor)
+            .list_tables_in_share(share_name, cursor)
             .await?;
         Ok(tables.into())
     }
@@ -117,7 +117,7 @@ impl SharingServerState {
     ) -> Result<ListTablesResponse, ServerError> {
         let tables = self
             .shared_table_manager
-            .list_tables_in_schema(share_name, schema_name, &cursor)
+            .list_tables_in_schema(share_name, schema_name, cursor)
             .await?;
         Ok(tables.into())
     }
@@ -154,7 +154,7 @@ impl SharingServerState {
     ) -> Result<TableInfoResponse, ServerError> {
         let table = self
             .table_manager()
-            .get_table(&share_name, &schema_name, &table_name)
+            .get_table(share_name, schema_name, table_name)
             .await?;
 
         let table_metadata = self
@@ -178,7 +178,7 @@ impl SharingServerState {
     ) -> Result<TableInfoResponse, ServerError> {
         let table = self
             .table_manager()
-            .get_table(&share_name, &schema_name, &table_name)
+            .get_table(share_name, schema_name, table_name)
             .await?;
 
         let table_data = self

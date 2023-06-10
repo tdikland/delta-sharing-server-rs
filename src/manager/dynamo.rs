@@ -54,7 +54,7 @@ impl DynamoShareReader {
     }
 
     /// Create a new DynamoDB table to store shares, schemas and tables.
-    pub fn create_table(&self) -> Result<(), ()> {
+    pub fn create_table(&self) -> Result<(), DynamoError> {
         todo!()
     }
 
@@ -98,7 +98,7 @@ impl DynamoShareReader {
     /// Retrieve a list of shares from the share store.
     pub async fn query_shares(&self, cursor: &ListCursor) -> Result<List<Share>, DynamoError> {
         let sk = "SHARE".to_owned();
-        let pk_prefix = format!("SHARE#");
+        let pk_prefix = "SHARE#".to_string();
         self.query_securable(cursor, sk, pk_prefix).await
     }
 
@@ -428,7 +428,7 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoKey {
             .ok_or(DynamoError::InvalidShareItem)?
             .as_s()
             .map_err(|_| DynamoError::InvalidShareItem)?
-            .split("#")
+            .split('#')
             .collect::<Vec<_>>();
 
         // Primary key validation

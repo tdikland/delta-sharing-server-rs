@@ -211,9 +211,10 @@ impl IntoResponse for TableInfoResponse {
 
 impl From<TableMetadata> for TableInfoResponse {
     fn from(v: TableMetadata) -> Self {
-        let mut lines = vec![];
-        lines.push(JsonWrapper::Protocol(v.protocol));
-        lines.push(JsonWrapper::Metadata(v.metadata));
+        let lines = vec![
+            JsonWrapper::Protocol(v.protocol),
+            JsonWrapper::Metadata(v.metadata),
+        ];
 
         Self {
             version: v.version,

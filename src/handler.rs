@@ -159,5 +159,5 @@ pub async fn get_table_changes(
     Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
     _version_range: TableChangePredicates,
 ) -> Result<TableInfoResponse> {
-    return Err(ServerError::Other);
+    Err(ServerError::Other)
 }

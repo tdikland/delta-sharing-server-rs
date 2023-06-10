@@ -19,6 +19,12 @@ impl DeltaTableReader {
     }
 }
 
+impl Default for DeltaTableReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl TableReader for DeltaTableReader {
     async fn get_table_version(
@@ -128,10 +134,8 @@ impl TableReader for DeltaTableReader {
 }
 
 impl From<DeltaTableError> for TableReaderError {
-    fn from(value: DeltaTableError) -> Self {
+    fn from(_value: DeltaTableError) -> Self {
         // TODO: meaningful error handling
-        match value {
-            _ => TableReaderError::Other,
-        }
+        TableReaderError::Other
     }
 }

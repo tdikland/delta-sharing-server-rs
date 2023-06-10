@@ -339,10 +339,7 @@ impl MySqlCursor {
     }
 
     pub fn last_seen_id(&self) -> u64 {
-        match self.last_seen_id {
-            Some(id) => id,
-            None => 0,
-        }
+        self.last_seen_id.unwrap_or(0)
     }
 
     pub fn limit(&self) -> i32 {

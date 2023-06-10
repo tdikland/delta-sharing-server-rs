@@ -610,10 +610,8 @@ impl ShareReader for PostgresShareReader {
 // TODO: Sort out Error handling and conversion
 impl From<sqlx::Error> for ShareReaderError {
     fn from(err: sqlx::Error) -> Self {
-        match err {
-            _ => ShareReaderError::Other {
-                reason: err.to_string(),
-            },
+        ShareReaderError::Other {
+            reason: err.to_string(),
         }
     }
 }

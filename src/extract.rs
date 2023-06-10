@@ -126,9 +126,8 @@ where
             (Some(start), Some(end), None, None) => {
                 if start > end {
                     return Err(ServerError::InvalidTableVersionRange {
-                        reason: format!(
-                            "starting table version cannot be higher than ending table version"
-                        ),
+                        reason: "starting table version cannot be higher than ending table version"
+                            .to_string(),
                     });
                 }
                 TableVersionRange::Version { start, end }

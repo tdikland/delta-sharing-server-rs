@@ -68,10 +68,8 @@ impl From<ShareReaderError> for ServerError {
 }
 
 impl From<TableReaderError> for ServerError {
-    fn from(value: TableReaderError) -> Self {
-        match value {
-            _ => Self::Other,
-        }
+    fn from(_value: TableReaderError) -> Self {
+        Self::Other
     }
 }
 
