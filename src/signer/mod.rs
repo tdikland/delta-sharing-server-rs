@@ -14,6 +14,7 @@ pub mod s3;
 
 /// Trait implemented by object store clients to derive a pre-signed url from
 /// a object store path/prefix.
+#[mockall::automock]
 #[async_trait]
 pub trait UrlSigner: Send + Sync {
     /// Create a presigned url from a object store path.

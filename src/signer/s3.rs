@@ -1,3 +1,5 @@
+//! UrlSigner for S3 object paths.
+
 use std::time::Duration;
 
 use async_trait::async_trait;
