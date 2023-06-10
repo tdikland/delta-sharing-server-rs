@@ -5,10 +5,8 @@ use aws_sdk_dynamodb::types::{
     ProjectionType, ProvisionedThroughput, ScalarAttributeType, TableStatus,
 };
 use delta_sharing_server_rs::{
-    manager::{
-        dynamo::DynamoTableManager, mysql::MySqlTableManager, postgres::PostgresTableManager,
-    },
-    protocol::{Schema, Share, Table},
+    manager::{dynamo::DynamoShareReader, mysql::MySqlShareReader, postgres::PostgresShareReader},
+    protocol::securable::{Schema, Share, Table},
 };
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};
 use std::{env, time::Duration};
@@ -37,7 +35,7 @@ impl IntegrationContext {
 
         let mut connection_url = Url::parse(&db_url).unwrap();
         connection_url.set_path(&db_name);
-        let pg_manager = PostgresTableManager::new(connection_url.as_str()).await;
+        let pg_manager = PostgresShareReader::new(connection_url.as_str()).await;
 
         let mut manager = Manager::Postgres(pg_manager);
         manager.setup().await;
@@ -65,7 +63,7 @@ impl IntegrationContext {
 
         let mut connection_url = Url::parse(&db_url).unwrap();
         connection_url.set_path(&db_name);
-        let mysql_manager = MySqlTableManager::new(connection_url.as_str()).await;
+        let mysql_manager = MySqlShareReader::new(connection_url.as_str()).await;
 
         let mut manager = Manager::MySql(mysql_manager);
         manager.setup().await;
@@ -172,8 +170,7 @@ impl IntegrationContext {
                 .clone();
         }
 
-        let ddb_manager =
-            DynamoTableManager::new(client, table_name.clone(), index_name.to_owned());
+        let ddb_manager = DynamoShareReader::new(client, table_name.clone(), index_name.to_owned());
 
         let mut manager = Manager::Dynamo(ddb_manager);
         manager.setup().await;
@@ -186,7 +183,7 @@ impl IntegrationContext {
         }
     }
 
-    pub fn from_dynamo(manager: DynamoTableManager, db_url: &str, db_name: &str) -> Self {
+    pub fn from_dynamo(manager: DynamoShareReader, db_url: &str, db_name: &str) -> Self {
         Self {
             manager: Manager::Dynamo(manager),
             db_url: db_url.to_owned(),
@@ -198,7 +195,7 @@ impl IntegrationContext {
         self.manager.teardown(&self.db_url, &self.db_name).await
     }
 
-    pub fn as_pg(&self) -> &PostgresTableManager {
+    pub fn as_pg(&self) -> &PostgresShareReader {
         if let Manager::Postgres(pg) = &self.manager {
             pg
         } else {
@@ -206,7 +203,7 @@ impl IntegrationContext {
         }
     }
 
-    pub fn as_mysql(&self) -> &MySqlTableManager {
+    pub fn as_mysql(&self) -> &MySqlShareReader {
         if let Manager::MySql(mysql) = &self.manager {
             mysql
         } else {
@@ -214,7 +211,7 @@ impl IntegrationContext {
         }
     }
 
-    pub fn as_dynamo(&self) -> &DynamoTableManager {
+    pub fn as_dynamo(&self) -> &DynamoShareReader {
         if let Manager::Dynamo(ddb) = &self.manager {
             ddb
         } else {
@@ -239,9 +236,9 @@ impl IntegrationContext {
 
 #[derive(Debug)]
 pub enum Manager {
-    Postgres(PostgresTableManager),
-    MySql(MySqlTableManager),
-    Dynamo(DynamoTableManager),
+    Postgres(PostgresShareReader),
+    MySql(MySqlShareReader),
+    Dynamo(DynamoShareReader),
 }
 
 impl Manager {

@@ -1,5 +1,6 @@
-use delta_sharing_server_rs::manager::{
-    dynamo::DynamoTableManager, ListCursor, TableManager, TableManagerError,
+use delta_sharing_server_rs::{
+    manager::{ShareReader, ShareReaderError},
+    protocol::share::ListCursor,
 };
 
 mod common;
@@ -50,7 +51,7 @@ async fn dynamodb() {
     ctx.teardown().await;
 }
 
-async fn test_list_shares<M: TableManager>(manager: &M) {
+async fn test_list_shares<M: ShareReader>(manager: &M) {
     // it should list up to 100 shares by default
     let res1 = manager.list_shares(&ListCursor::default()).await.unwrap();
     let mut share_names = res1.iter().map(|s| s.name()).collect::<Vec<_>>();
@@ -85,7 +86,7 @@ async fn test_list_shares<M: TableManager>(manager: &M) {
     }
 }
 
-async fn test_get_share<M: TableManager>(manager: &M) {
+async fn test_get_share<M: ShareReader>(manager: &M) {
     // it should return the share if it exists
     let existing_share = manager.get_share("share_1").await.unwrap();
     assert_eq!(existing_share.name(), "share_1");
@@ -94,13 +95,13 @@ async fn test_get_share<M: TableManager>(manager: &M) {
     let non_existing_share = manager.get_share("absent").await.unwrap_err();
     assert_eq!(
         non_existing_share,
-        TableManagerError::ShareNotFound {
+        ShareReaderError::ShareNotFound {
             share_name: "absent".to_string()
         }
     );
 }
 
-async fn test_list_schemas<M: TableManager>(manager: &M) {
+async fn test_list_schemas<M: ShareReader>(manager: &M) {
     // it should list up to 100 schemas by default
     let res1 = manager
         .list_schemas("share_1", &ListCursor::default())
@@ -144,7 +145,7 @@ async fn test_list_schemas<M: TableManager>(manager: &M) {
     }
 }
 
-async fn test_list_tables_in_share<M: TableManager>(manager: &M) {
+async fn test_list_tables_in_share<M: ShareReader>(manager: &M) {
     // it should list up to 100 tables by default
     let res1 = manager
         .list_tables_in_share("share_1", &ListCursor::default())
@@ -198,7 +199,7 @@ async fn test_list_tables_in_share<M: TableManager>(manager: &M) {
     }
 }
 
-async fn test_list_tables_in_schema<M: TableManager>(manager: &M) {
+async fn test_list_tables_in_schema<M: ShareReader>(manager: &M) {
     // it should list up to 100 tables by default
     let res1 = manager
         .list_tables_in_schema("share_1", "schema_1", &ListCursor::default())
@@ -252,7 +253,7 @@ async fn test_list_tables_in_schema<M: TableManager>(manager: &M) {
     }
 }
 
-async fn test_get_table<M: TableManager>(manager: &M) {
+async fn test_get_table<M: ShareReader>(manager: &M) {
     // it should return the table if it exists
     let table = manager
         .get_table("share_1", "schema_1", "table_1")
@@ -284,6 +285,6 @@ async fn test_get_table<M: TableManager>(manager: &M) {
         manager
             .get_table("share_1", "schema_1", "absent_table")
             .await,
-        Err(TableManagerError::TableNotFound { .. })
+        Err(ShareReaderError::TableNotFound { .. })
     ));
 }

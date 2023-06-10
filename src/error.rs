@@ -1,9 +1,9 @@
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
-use crate::{manager::TableManagerError, reader::TableReaderError};
+use crate::{manager::ShareReaderError, reader::TableReaderError};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ServerError {
     InvalidPagination { reason: String },
     InvalidTableStartingTimestamp,
@@ -41,20 +41,20 @@ impl ServerError {
 
 pub type Result<T> = core::result::Result<T, ServerError>;
 
-impl From<TableManagerError> for ServerError {
-    fn from(value: TableManagerError) -> Self {
+impl From<ShareReaderError> for ServerError {
+    fn from(value: ShareReaderError) -> Self {
         match value {
-            TableManagerError::TableNotFound {
+            ShareReaderError::TableNotFound {
                 share_name,
                 schema_name,
                 table_name,
             } => Self::TableNotFound {
                 name: format!("{}.{}.{}", share_name, schema_name, table_name),
             },
-            TableManagerError::ShareNotFound { share_name } => {
+            ShareReaderError::ShareNotFound { share_name } => {
                 Self::ShareNotFound { name: share_name }
             }
-            TableManagerError::MalformedContinuationToken => ServerError::MalformedNextPageToken,
+            ShareReaderError::MalformedContinuationToken => ServerError::MalformedNextPageToken,
             // TableManagerError::InternalError => Self::ShareStore,
             // TableManagerError::Other => Self::Other,
             // TableManagerError::MalformedListCursor => Self::InvalidPagination {

@@ -237,19 +237,3 @@ impl From<SignedTableData> for TableInfoResponse {
         }
     }
 }
-
-// impl From<SignedTableChanges> for TableInfoResponse {
-//     fn from(value: SignedTableChanges) -> Self {
-//         let mut lines = vec![];
-//         lines.push(JsonWrapper::Protocol(value.protocol));
-//         lines.push(JsonWrapper::Metadata(value.metadata));
-//         for f in value.changes {
-//             lines.push(JsonWrapper::Add(f))
-//         }
-
-//         Self {
-//             version: value.version,
-//             lines,
-//         }
-//     }
-// }

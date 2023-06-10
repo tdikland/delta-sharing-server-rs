@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display};
 
 pub mod dynamo;
-// pub mod mysql;
-// pub mod postgres;
+pub mod mysql;
+pub mod postgres;
 
 use crate::protocol::{
     securable::{Schema, Share, Table},
@@ -19,14 +19,14 @@ use crate::protocol::{
 /// store for the shared objects.
 #[mockall::automock]
 #[async_trait]
-pub trait TableManager: Send + Sync {
+pub trait ShareReader: Send + Sync {
     /// Fetch a list of shares stored on the sharing server store. The list
     /// cursor is used to limit the amount of returned shares and to resume
     /// listing from a specified point in the collection.
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, TableManagerError>;
+    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareReaderError>;
 
     /// Get share details by name
-    async fn get_share(&self, share_name: &str) -> Result<Share, TableManagerError>;
+    async fn get_share(&self, share_name: &str) -> Result<Share, ShareReaderError>;
 
     /// Fetch a list of schemas stored on the sharing server store under a
     /// spcific share. The list cursor is used to limit the amount of returned
@@ -35,7 +35,7 @@ pub trait TableManager: Send + Sync {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Schema>, TableManagerError>;
+    ) -> Result<List<Schema>, ShareReaderError>;
 
     /// Fetch a list of tables stored on the sharing server store under a
     /// spcific share combination. The list cursor is used to limit
@@ -45,7 +45,7 @@ pub trait TableManager: Send + Sync {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError>;
+    ) -> Result<List<Table>, ShareReaderError>;
 
     /// Fetch a list of tables stored on the sharing server store under a
     /// spcific share + schema combination. The list cursor is used to limit
@@ -56,7 +56,7 @@ pub trait TableManager: Send + Sync {
         share_name: &str,
         schema_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError>;
+    ) -> Result<List<Table>, ShareReaderError>;
 
     /// Get table specifics for a combination of share + schema + name.
     async fn get_table(
@@ -64,12 +64,12 @@ pub trait TableManager: Send + Sync {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, TableManagerError>;
+    ) -> Result<Table, ShareReaderError>;
 }
 
 /// Errors that can occur during the listing and retrieval of shared objects.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TableManagerError {
+pub enum ShareReaderError {
     /// The requested share was not found in the backing store.
     ShareNotFound {
         /// The name of the share that could not be found.
@@ -102,13 +102,13 @@ pub enum TableManagerError {
     },
 }
 
-impl Display for TableManagerError {
+impl Display for ShareReaderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TableManagerError::ShareNotFound { share_name } => {
+            ShareReaderError::ShareNotFound { share_name } => {
                 write!(f, "share `{}` could not be found", share_name)
             }
-            TableManagerError::SchemaNotFound {
+            ShareReaderError::SchemaNotFound {
                 share_name,
                 schema_name,
             } => write!(
@@ -116,7 +116,7 @@ impl Display for TableManagerError {
                 "schema `{}.{}` could not be found",
                 share_name, schema_name
             ),
-            TableManagerError::TableNotFound {
+            ShareReaderError::TableNotFound {
                 share_name,
                 schema_name,
                 table_name,
@@ -125,15 +125,15 @@ impl Display for TableManagerError {
                 "table `{}.{}.{}` could not be found",
                 share_name, schema_name, table_name
             ),
-            TableManagerError::MalformedContinuationToken => {
+            ShareReaderError::MalformedContinuationToken => {
                 write!(f, "the provided `page_token` is malformed")
             }
-            TableManagerError::ConnectionError => {
+            ShareReaderError::ConnectionError => {
                 write!(f, "could not connect with the share manager")
             }
-            TableManagerError::Other { .. } => write!(f, "another error occurred"),
+            ShareReaderError::Other { .. } => write!(f, "another error occurred"),
         }
     }
 }
 
-impl Error for TableManagerError {}
+impl Error for ShareReaderError {}

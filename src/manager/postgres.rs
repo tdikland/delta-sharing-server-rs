@@ -1,4 +1,4 @@
-//! TableManager implementation leveraging Postgres as backing store.
+//! ShareReader implementation leveraging Postgres as backing store.
 
 use async_trait::async_trait;
 use sqlx::{
@@ -7,16 +7,16 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use crate::protocol::{Schema, Share, Table};
+use crate::protocol::securable::{Schema, Share, Table};
 
-use super::{List, ListCursor, TableManager, TableManagerError};
+use super::{List, ListCursor, ShareReader, ShareReaderError};
 
 #[derive(Debug)]
-pub struct PostgresTableManager {
+pub struct PostgresShareReader {
     pool: PgPool,
 }
 
-impl PostgresTableManager {
+impl PostgresShareReader {
     pub async fn new(connection_url: &str) -> Self {
         let pool = PgPoolOptions::new()
             .max_connections(500)
@@ -462,10 +462,10 @@ impl TryFrom<PgRow> for Table {
 }
 
 #[async_trait]
-impl TableManager for PostgresTableManager {
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, TableManagerError> {
+impl ShareReader for PostgresShareReader {
+    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
         let shares = self.select_shares(&pg_cursor).await?;
 
         let next_page_token = if shares.len() == pg_cursor.limit() as usize {
@@ -481,10 +481,10 @@ impl TableManager for PostgresTableManager {
         Ok(List::new(shares, next_page_token))
     }
 
-    async fn get_share(&self, share_name: &str) -> Result<Share, TableManagerError> {
+    async fn get_share(&self, share_name: &str) -> Result<Share, ShareReaderError> {
         self.select_share_by_name(share_name)
             .await?
-            .ok_or(TableManagerError::ShareNotFound {
+            .ok_or(ShareReaderError::ShareNotFound {
                 share_name: share_name.to_string(),
             })
     }
@@ -493,9 +493,9 @@ impl TableManager for PostgresTableManager {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Schema>, TableManagerError> {
+    ) -> Result<List<Schema>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
         let schemas = self
             .select_schemas_by_share_name(share_name, &pg_cursor)
             .await?;
@@ -517,9 +517,9 @@ impl TableManager for PostgresTableManager {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError> {
+    ) -> Result<List<Table>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
         let next_page_token = if tables.len() == pg_cursor.limit() as usize {
@@ -540,9 +540,9 @@ impl TableManager for PostgresTableManager {
         share_name: &str,
         schema_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError> {
+    ) -> Result<List<Table>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| TableManagerError::MalformedContinuationToken)?;
+            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
         let tables = self
             .select_tables_by_schema(share_name, schema_name, &pg_cursor)
             .await?;
@@ -565,7 +565,7 @@ impl TableManager for PostgresTableManager {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, TableManagerError> {
+    ) -> Result<Table, ShareReaderError> {
         match self
             .select_table_by_name(share_name, schema_name, table_name)
             .await
@@ -575,14 +575,14 @@ impl TableManager for PostgresTableManager {
                 let share = self.select_share_by_name(share_name).await?;
                 let schema = self.select_schema_by_name(share_name, schema_name).await?;
                 match (share, schema) {
-                    (None, _) => Err(TableManagerError::ShareNotFound {
+                    (None, _) => Err(ShareReaderError::ShareNotFound {
                         share_name: share_name.to_owned(),
                     }),
-                    (Some(_), None) => Err(TableManagerError::SchemaNotFound {
+                    (Some(_), None) => Err(ShareReaderError::SchemaNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                     }),
-                    (Some(_), Some(_)) => Err(TableManagerError::TableNotFound {
+                    (Some(_), Some(_)) => Err(ShareReaderError::TableNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                         table_name: table_name.to_owned(),
@@ -595,10 +595,10 @@ impl TableManager for PostgresTableManager {
 }
 
 // TODO: Sort out Error handling and conversion
-impl From<sqlx::Error> for TableManagerError {
+impl From<sqlx::Error> for ShareReaderError {
     fn from(err: sqlx::Error) -> Self {
         match err {
-            _ => TableManagerError::Other {
+            _ => ShareReaderError::Other {
                 reason: err.to_string(),
             },
         }

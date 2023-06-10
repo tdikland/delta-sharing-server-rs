@@ -2,6 +2,8 @@
 
 #![warn(missing_docs)]
 
+use std::{error::Error, fmt::Display};
+
 use async_trait::async_trait;
 
 use crate::protocol::table::{
@@ -60,3 +62,15 @@ pub enum TableReaderError {
     /// An unexpected error occured.
     Other,
 }
+
+impl Display for TableReaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableReaderError::Other => {
+                write!(f, "An unexpected error happened during table reading")
+            }
+        }
+    }
+}
+
+impl Error for TableReaderError {}

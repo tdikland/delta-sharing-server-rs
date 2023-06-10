@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum_macros::debug_handler;
@@ -147,11 +147,10 @@ pub async fn get_table_data(
             storage: String::from("S3"),
         })?;
 
-    todo!()
-    // let signed_table_data = table_data.sign(signer.deref()).await;
+    let signed_table_data = signer.sign_table_data(table_data).await;
 
-    // let response = TableInfoResponse::from(signed_table_data);
-    // Ok(response)
+    let response = TableInfoResponse::from(signed_table_data);
+    Ok(response)
 }
 
 #[debug_handler]

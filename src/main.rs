@@ -1,6 +1,6 @@
 use lambda_http::{run, Error};
 
-use delta_sharing_server_rs::manager::dynamo::DynamoTableManager;
+use delta_sharing_server_rs::manager::dynamo::DynamoShareReader;
 use delta_sharing_server_rs::reader::delta::DeltaTableReader;
 use delta_sharing_server_rs::router::build_sharing_server_router;
 use delta_sharing_server_rs::signer::s3::S3UrlSigner;
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Error> {
     // configure table manager
     let config = aws_config::load_from_env().await;
     let ddb_client = aws_sdk_dynamodb::Client::new(&config);
-    let table_manager = Arc::new(DynamoTableManager::new(
+    let table_manager = Arc::new(DynamoShareReader::new(
         ddb_client,
         "delta-sharing-store".to_owned(),
         "SK-PK-index".to_owned(),

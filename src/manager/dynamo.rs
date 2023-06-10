@@ -1,23 +1,4 @@
 //! A TableManager implementation leveraging AWS DynamoDB.
-//!
-//! ## DynamoDB table layout
-//!
-//! | PK | SK | share_id | storage_path | table_id
-//! SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL | SHARE | share1_id
-//! SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#ALL | SCHEMA |
-//! SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} | TABLE | share1_id | s3://!my-data-bucket/my-table-root/ | table1_id
-//!
-//! Key
-//! 1. KEY: PK+SK
-//! 2. GSI: SK+PK
-//!
-//! Implemented query patterns
-//! 1. QUERY on GSI with SK = SHARE
-//! 2. GET on KEY with PK = SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL
-//! 3. QUERY on GSI with SK = SCHEMA AND PK begins_with(SHARE#{share_name})
-//! 4. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name}#SCHEMA#{schema_name})
-//! 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
-//! 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
 
 use std::{collections::HashMap, fmt::Display};
 
@@ -32,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::securable::{Schema, Share, Table};
 
-use super::{List, ListCursor, TableManager, TableManagerError};
+use super::{List, ListCursor, ShareReader, ShareReaderError};
 
 /// TableManager using AWS DynamoDB to store shared objects.
 ///
@@ -55,14 +36,14 @@ use super::{List, ListCursor, TableManager, TableManagerError};
 /// 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
 /// 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
 #[derive(Debug)]
-pub struct DynamoTableManager {
+pub struct DynamoShareReader {
     client: Client,
     table_name: String,
     index_name: String,
 }
 
-impl DynamoTableManager {
-    /// Create a new TableManager using the AWS DynamoDB client alogn with
+impl DynamoShareReader {
+    /// Create a new TableManager using the AWS DynamoDB client along with
     /// table_name and GSI index name.
     pub fn new(client: Client, table_name: String, index_name: String) -> Self {
         Self {
@@ -70,6 +51,10 @@ impl DynamoTableManager {
             table_name,
             index_name,
         }
+    }
+
+    pub fn create_table(&self) -> Result<(), ()> {
+        todo!()
     }
 
     pub fn client(&self) -> &Client {
@@ -583,15 +568,15 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
     }
 }
 
-impl From<DynamoError> for TableManagerError {
+impl From<DynamoError> for ShareReaderError {
     fn from(value: DynamoError) -> Self {
         println!("ENCOUNTERED ERROR!: {:?}", &value);
         match value {
-            DynamoError::InvalidListCursor => TableManagerError::MalformedContinuationToken,
+            DynamoError::InvalidListCursor => ShareReaderError::MalformedContinuationToken,
             DynamoError::ShareNotFound { share } => {
-                TableManagerError::ShareNotFound { share_name: share }
+                ShareReaderError::ShareNotFound { share_name: share }
             }
-            _ => TableManagerError::Other {
+            _ => ShareReaderError::Other {
                 reason: String::from(""),
             },
         }
@@ -599,12 +584,12 @@ impl From<DynamoError> for TableManagerError {
 }
 
 #[async_trait]
-impl TableManager for DynamoTableManager {
-    async fn list_shares(&self, pagination: &ListCursor) -> Result<List<Share>, TableManagerError> {
+impl ShareReader for DynamoShareReader {
+    async fn list_shares(&self, pagination: &ListCursor) -> Result<List<Share>, ShareReaderError> {
         self.query_shares(pagination).await.map_err(From::from)
     }
 
-    async fn get_share(&self, share_name: &str) -> Result<Share, TableManagerError> {
+    async fn get_share(&self, share_name: &str) -> Result<Share, ShareReaderError> {
         self.get_share(share_name).await.map_err(From::from)
     }
 
@@ -612,7 +597,7 @@ impl TableManager for DynamoTableManager {
         &self,
         share_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Schema>, TableManagerError> {
+    ) -> Result<List<Schema>, ShareReaderError> {
         self.query_schemas(share_name, pagination)
             .await
             .map_err(From::from)
@@ -622,7 +607,7 @@ impl TableManager for DynamoTableManager {
         &self,
         share_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError> {
+    ) -> Result<List<Table>, ShareReaderError> {
         self.query_tables_in_share(share_name, pagination)
             .await
             .map_err(From::from)
@@ -633,7 +618,7 @@ impl TableManager for DynamoTableManager {
         share_name: &str,
         schema_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Table>, TableManagerError> {
+    ) -> Result<List<Table>, ShareReaderError> {
         self.query_tables_in_schema(share_name, schema_name, pagination)
             .await
             .map_err(From::from)
@@ -644,7 +629,7 @@ impl TableManager for DynamoTableManager {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, TableManagerError> {
+    ) -> Result<Table, ShareReaderError> {
         self.get_table(share_name, schema_name, table_name)
             .await
             .map_err(From::from)

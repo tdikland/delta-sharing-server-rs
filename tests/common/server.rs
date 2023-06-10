@@ -7,7 +7,7 @@ use axum::http::{
 };
 use axum::Server;
 use bytes::Bytes;
-use delta_sharing_server_rs::manager::dynamo::DynamoTableManager;
+use delta_sharing_server_rs::manager::dynamo::DynamoShareReader;
 use delta_sharing_server_rs::reader::delta::DeltaTableReader;
 use delta_sharing_server_rs::router::build_sharing_server_router;
 use delta_sharing_server_rs::signer::s3::S3UrlSigner;
@@ -27,7 +27,7 @@ impl TestClient {
         let client = aws_sdk_dynamodb::Client::new(&config);
 
         // let dynamo_config = DynamoConfig::new("delta-sharing-store", "SK-PK-index");
-        let table_manager = Arc::new(DynamoTableManager::new(
+        let table_manager = Arc::new(DynamoShareReader::new(
             client,
             "delta-sharing-store".to_owned(),
             "SK-PK-index".to_owned(),
