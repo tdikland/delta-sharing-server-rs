@@ -4,7 +4,7 @@ use aws_sdk_dynamodb::types::{
     AttributeDefinition, BillingMode, GlobalSecondaryIndex, KeySchemaElement, KeyType, Projection,
     ProjectionType, ProvisionedThroughput, ScalarAttributeType, TableStatus,
 };
-use delta_sharing_server_rs::{
+use delta_sharing_server::{
     manager::{dynamo::DynamoShareReader, mysql::MySqlShareReader, postgres::PostgresShareReader},
     protocol::securable::{Schema, Share, Table},
 };

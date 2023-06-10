@@ -1,3 +1,5 @@
+//! Router for the sharing server.
+
 use std::sync::Arc;
 
 use axum::{
@@ -7,6 +9,7 @@ use axum::{
 
 use crate::{handler, state::SharingServerState};
 
+/// Builds the router for the sharing server
 pub fn build_sharing_server_router(state: Arc<SharingServerState>) -> Router {
     Router::new()
         .route("/shares", get(handler::list_shares))

@@ -53,14 +53,17 @@ impl DynamoShareReader {
         }
     }
 
+    /// Create a new DynamoDB table to store shares, schemas and tables.
     pub fn create_table(&self) -> Result<(), ()> {
         todo!()
     }
 
+    /// Retrieve underlying DynamoDB SDK client.
     pub fn client(&self) -> &Client {
         &self.client
     }
 
+    /// Add a new share to the share store.
     pub async fn put_share(&self, share: Share) -> Result<Share, DynamoError> {
         let key = DynamoKey::from_share_name(share.name());
         let mut req = self
@@ -81,6 +84,7 @@ impl DynamoShareReader {
         Ok(share)
     }
 
+    /// Retrieve a share from the share store.
     pub async fn get_share(&self, share_name: &str) -> Result<Share, DynamoError> {
         let key = DynamoKey::from_share_name(share_name);
         self.get_securable(key).await.map_err(|e| match e {
@@ -91,12 +95,14 @@ impl DynamoShareReader {
         })
     }
 
+    /// Retrieve a list of shares from the share store.
     pub async fn query_shares(&self, cursor: &ListCursor) -> Result<List<Share>, DynamoError> {
         let sk = "SHARE".to_owned();
         let pk_prefix = format!("SHARE#");
         self.query_securable(cursor, sk, pk_prefix).await
     }
 
+    /// Add a new schema to the share store.
     pub async fn put_schema(&self, schema: Schema) -> Result<Schema, DynamoError> {
         let key = DynamoKey::from_schema_name(schema.share_name(), schema.name());
         self.client
@@ -113,6 +119,7 @@ impl DynamoShareReader {
         Ok(schema)
     }
 
+    /// Retrieve a schema from the share store.
     pub async fn get_schema(
         &self,
         share_name: &str,
@@ -122,6 +129,7 @@ impl DynamoShareReader {
         self.get_securable(key).await
     }
 
+    /// Retrieve a list of schemas from the share store.
     pub async fn query_schemas(
         &self,
         share_name: &str,
@@ -132,6 +140,7 @@ impl DynamoShareReader {
         self.query_securable(cursor, sk, pk_prefix).await
     }
 
+    /// Add a new table to the share store.
     pub async fn put_table(&self, table: Table) -> Result<Table, DynamoError> {
         let key = DynamoKey::from_table_name(table.share_name(), table.schema_name(), table.name());
         self.client
@@ -152,6 +161,7 @@ impl DynamoShareReader {
         Ok(table)
     }
 
+    /// Retrieve a table from the share store.
     pub async fn get_table(
         &self,
         share_name: &str,
@@ -162,6 +172,7 @@ impl DynamoShareReader {
         self.get_securable(key).await
     }
 
+    /// Retrieve a list of tables from the share store.
     pub async fn query_tables_in_share(
         &self,
         share_name: &str,
@@ -172,6 +183,7 @@ impl DynamoShareReader {
         self.query_securable(cursor, sk, pk_prefix).await
     }
 
+    /// Retrieve a list of tables from the share store.
     pub async fn query_tables_in_schema(
         &self,
         share_name: &str,
@@ -209,14 +221,15 @@ impl DynamoShareReader {
         Ok(securable)
     }
 
-    async fn query_securable<
-        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
-    >(
+    async fn query_securable<T>(
         &self,
         cursor: &ListCursor,
         sk: String,
         pk_begins_with: String,
-    ) -> Result<List<T>, DynamoError> {
+    ) -> Result<List<T>, DynamoError>
+    where
+        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
+    {
         let mut query = self
             .client
             .query()
@@ -272,52 +285,48 @@ where
     }
 }
 
-pub struct DynamoConfig {
-    table_name: String,
-    index_name: String,
-}
-
-impl DynamoConfig {
-    pub fn new(table_name: impl Into<String>, index_name: impl Into<String>) -> Self {
-        Self {
-            table_name: table_name.into(),
-            index_name: index_name.into(),
-        }
-    }
-
-    pub fn table_name(&self) -> &str {
-        self.table_name.as_ref()
-    }
-
-    pub fn index_name(&self) -> &str {
-        self.index_name.as_ref()
-    }
-}
-
+/// Errors that can occur when interacting with the DynamoDB share store.
 #[derive(Debug)]
 pub enum DynamoError {
-    ListCursorNotFound,
+    /// The ListCursor could not be interpreted as a DynamoCursor.
     InvalidListCursor,
+    /// The DynamoCursor could not be interpreted as a ListCursor.
     InvalidDynamoCursor,
+    /// The requested securable was not found.
     SecurableNotFound,
+    /// The requested share was not found.
     ShareNotFound {
+        /// The name of the share that was not found.
         share: String,
     },
+    /// The requested schema was not found.
     SchemaNotFound {
+        /// The name of the share that was searched.
         share: String,
+        /// The name of the schema that was not found.
         schema: String,
     },
+    /// The requested table was not found.
     TableNotFound {
+        /// The name of the share that was searched.
         share: String,
+        /// The name of the schema that was searched.
         schema: String,
+        /// The name of the table that was not found.
         table: String,
     },
+    /// The requested share could not be parsed.
     InvalidShareItem,
+    /// The requested schema could not be parsed.
     InvalidSchemaItem,
+    /// The requested table could not be parsed.
     InvalidTableItem,
+    /// An error occurred when interacting with the DynamoDB service.
     ServiceError {
+        /// The reason for the error.
         reason: String,
     },
+    /// An unexpected error occurred.
     Other,
 }
 

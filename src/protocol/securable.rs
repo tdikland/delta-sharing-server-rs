@@ -53,7 +53,7 @@ impl Share {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::Share;
+    /// use delta_sharing_server::protocol::securable::Share;
     ///
     /// let share = Share::new("my-share", None);
     /// assert_eq!(share.name(), "my-share");
@@ -67,7 +67,7 @@ impl Share {
     /// # Example
     ///  
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::Share;
+    /// use delta_sharing_server::protocol::securable::Share;
     ///
     /// let share = Share::new("my-share", Some("my-share-id"));
     /// assert_eq!(share.id(), Some("my-share-id"));
@@ -98,7 +98,7 @@ impl Schema {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -113,7 +113,7 @@ impl Schema {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema};
     ///
     /// let share = Share::new("my-share", Some("my-share-id"));
     /// let schema = Schema::new(share, "my-schema", None);
@@ -128,7 +128,7 @@ impl Schema {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -143,7 +143,7 @@ impl Schema {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", Some("my-schema-id"));
@@ -188,7 +188,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -204,7 +204,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", Some("my-share-id"));
     /// let schema = Schema::new(share, "my-schema", None);
@@ -220,7 +220,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -236,7 +236,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", Some("my-schema-id"));
@@ -252,7 +252,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -268,7 +268,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -284,7 +284,7 @@ impl Table {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);
@@ -300,7 +300,7 @@ impl Table {
     /// # Example
     ///    
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::securable::{Share, Schema, Table};
+    /// use delta_sharing_server::protocol::securable::{Share, Schema, Table};
     ///
     /// let share = Share::new("my-share", None);
     /// let schema = Schema::new(share, "my-schema", None);

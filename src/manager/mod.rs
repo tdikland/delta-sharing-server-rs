@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 //! Types and traits for managing shared objects.
 
 use async_trait::async_trait;
@@ -17,7 +15,7 @@ use crate::protocol::{
 
 /// Trait implemented by Share managers that each represent a different backing
 /// store for the shared objects.
-#[mockall::automock]
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait ShareReader: Send + Sync {
     /// Fetch a list of shares stored on the sharing server store. The list

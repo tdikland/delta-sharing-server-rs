@@ -7,11 +7,11 @@ use axum::http::{
 };
 use axum::Server;
 use bytes::Bytes;
-use delta_sharing_server_rs::manager::dynamo::DynamoShareReader;
-use delta_sharing_server_rs::reader::delta::DeltaTableReader;
-use delta_sharing_server_rs::router::build_sharing_server_router;
-use delta_sharing_server_rs::signer::s3::S3UrlSigner;
-use delta_sharing_server_rs::state::SharingServerState;
+use delta_sharing_server::manager::dynamo::DynamoShareReader;
+use delta_sharing_server::reader::delta::DeltaTableReader;
+use delta_sharing_server::router::build_sharing_server_router;
+use delta_sharing_server::signer::s3::S3UrlSigner;
+use delta_sharing_server::state::SharingServerState;
 use std::net::{SocketAddr, TcpListener};
 use std::{convert::TryFrom, sync::Arc};
 use tower::make::Shared;

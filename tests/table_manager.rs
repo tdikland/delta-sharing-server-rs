@@ -1,4 +1,4 @@
-use delta_sharing_server_rs::{
+use delta_sharing_server::{
     manager::{ShareReader, ShareReaderError},
     protocol::share::ListCursor,
 };

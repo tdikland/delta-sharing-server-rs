@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 

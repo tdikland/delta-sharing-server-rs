@@ -11,12 +11,14 @@ use crate::protocol::securable::{Schema, Share, Table};
 
 use super::{List, ListCursor, ShareReader, ShareReaderError};
 
+/// ShareReader implementation leveraging Postgres as backing store.
 #[derive(Debug)]
 pub struct PostgresShareReader {
     pool: PgPool,
 }
 
 impl PostgresShareReader {
+    /// Create a new PostgresShareReader.
     pub async fn new(connection_url: &str) -> Self {
         let pool = PgPoolOptions::new()
             .max_connections(500)
@@ -27,14 +29,17 @@ impl PostgresShareReader {
         Self { pool }
     }
 
+    /// Create a new PostgresShareReader from an existing PgPool.
     pub fn from_pool(pool: PgPool) -> Self {
         Self { pool }
     }
 
+    /// Return a reference to the underlying PgPool.
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
 
+    /// Insert a new share into the database.
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
         let share_id = Uuid::new_v4();
         sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2);")
@@ -87,6 +92,7 @@ impl PostgresShareReader {
         .collect()
     }
 
+    /// Delete a share from the database.
     pub async fn delete_share_by_name(&self, share_name: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM share WHERE name = $1;")
             .bind(share_name)
@@ -96,6 +102,7 @@ impl PostgresShareReader {
         Ok(())
     }
 
+    /// Delete all shares from the database.
     pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM share;")
             .execute(&self.pool)
@@ -104,6 +111,7 @@ impl PostgresShareReader {
         Ok(())
     }
 
+    /// Insert a new schema into the database.
     pub async fn insert_schema(
         &self,
         share: &Share,
@@ -183,6 +191,7 @@ impl PostgresShareReader {
         .collect()
     }
 
+    /// Delete a schema from the database.
     pub async fn delete_schema_by_name(&self, schema_name: &str) -> Result<(), sqlx::Error> {
         sqlx::query(r#"DELETE FROM "schema" WHERE name = $1;"#)
             .bind(schema_name)
@@ -192,6 +201,7 @@ impl PostgresShareReader {
         Ok(())
     }
 
+    /// Delete all schemas from the database.
     pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
         sqlx::query(r#"DELETE FROM "schema";"#)
             .execute(&self.pool)
@@ -200,6 +210,7 @@ impl PostgresShareReader {
         Ok(())
     }
 
+    /// Insert a new table into the database.
     pub async fn insert_table(
         &self,
         schema: &Schema,
@@ -333,6 +344,7 @@ impl PostgresShareReader {
         .transpose()
     }
 
+    /// Delete a table from the database.
     pub async fn delete_table_by_name(
         &self,
         share_name: &str,
@@ -360,6 +372,7 @@ impl PostgresShareReader {
         Ok(())
     }
 
+    /// Delete all tables from the database.
     pub async fn delete_tables(&self) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"

@@ -5,6 +5,7 @@ use sqlx::mysql::{MySqlPoolOptions, MySqlRow};
 use sqlx::MySqlPool;
 use sqlx::Row;
 
+/// ShareReader using a MySQL database as backing store.
 #[derive(Debug)]
 pub struct MySqlShareReader {
     pool: MySqlPool,
@@ -15,6 +16,7 @@ use crate::protocol::securable::{Schema, Share, Table};
 use super::{List, ListCursor, ShareReader, ShareReaderError};
 
 impl MySqlShareReader {
+    /// Create a new instance of MySqlShareReader.
     pub async fn new(connection_url: &str) -> Self {
         let pool = MySqlPoolOptions::new()
             .max_connections(25)
@@ -25,14 +27,17 @@ impl MySqlShareReader {
         Self { pool }
     }
 
+    /// Create a new instance of MySqlShareReader from an existing pool.
     pub fn from_pool(pool: MySqlPool) -> Self {
         Self { pool }
     }
 
+    /// Get a reference to the underlying pool.
     pub fn pool(&self) -> &MySqlPool {
         &self.pool
     }
 
+    /// Insert a new share into the database.
     pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
         let insert = sqlx::query("INSERT INTO share (name) VALUES (?);")
             .bind(share_name)
@@ -43,6 +48,7 @@ impl MySqlShareReader {
         Ok(Share::new(share_name.to_string(), Some(share_id)))
     }
 
+    /// Retrieve a share by its name.
     async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
         sqlx::query(
             r#"
@@ -81,6 +87,7 @@ impl MySqlShareReader {
         .collect()
     }
 
+    /// Delete all shares from the database.
     pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM share;")
             .execute(&self.pool)
@@ -88,6 +95,7 @@ impl MySqlShareReader {
         Ok(())
     }
 
+    /// Insert a new schema into the database.
     pub async fn insert_schema(
         &self,
         share: &Share,
@@ -166,6 +174,7 @@ impl MySqlShareReader {
         .collect()
     }
 
+    /// Delete all schemas from the database.
     pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM `schema`;")
             .execute(&self.pool)
@@ -173,6 +182,7 @@ impl MySqlShareReader {
         Ok(())
     }
 
+    /// Insert a new table into the database.
     pub async fn insert_table(
         &self,
         schema: &Schema,
@@ -305,6 +315,7 @@ impl MySqlShareReader {
         .transpose()
     }
 
+    /// Delete all tables from the database.
     pub async fn delete_tables(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM `table`;")
             .execute(&self.pool)
@@ -536,14 +547,3 @@ impl ShareReader for MySqlShareReader {
         }
     }
 }
-
-// TODO: Sort out Error handling and conversion
-// impl From<sqlx::Error> for ShareReaderError {
-//     fn from(err: sqlx::Error) -> Self {
-//         match err {
-//             _ => ShareReaderError::Other {
-//                 reason: err.to_string(),
-//             },
-//         }
-//     }
-// }

@@ -44,7 +44,7 @@ pub struct Metadata {
     pub partition_columns: Vec<String>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     /// A map containing configuration options for the table.
-    pub configuration: HashMap<String, Option<String>>,
+    pub configuration: HashMap<String, String>,
     /// The version of the table this metadata corresponds to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -64,6 +64,104 @@ pub struct FileFormat {
     pub provider: String,
 }
 
+/// Build a new Metadata action.
+pub struct MetadataBuilder {
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    format: FileFormat,
+    schema_string: String,
+    partition_columns: Vec<String>,
+    configuration: HashMap<String, String>,
+    version: Option<String>,
+    size: Option<u64>,
+    num_files: Option<u64>,
+}
+
+impl MetadataBuilder {
+    /// Initialize a new MetadataBuilder.
+    pub fn new<S: Into<String>>(id: S, schema_string: S) -> Self {
+        Self {
+            id: id.into(),
+            name: None,
+            description: None,
+            format: FileFormat {
+                provider: "parquet".to_string(),
+            },
+            schema_string: schema_string.into(),
+            partition_columns: vec![],
+            configuration: HashMap::new(),
+            version: None,
+            size: None,
+            num_files: None,
+        }
+    }
+
+    /// Set the name of the table.
+    pub fn name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    /// Set the description of the table.
+    pub fn description(mut self, description: String) -> Self {
+        self.description = Some(description);
+        self
+    }
+
+    /// Set the format of the table.
+    pub fn format(mut self, format: FileFormat) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Set the partition columns of the table.
+    pub fn partition_columns(mut self, partition_columns: Vec<String>) -> Self {
+        self.partition_columns = partition_columns;
+        self
+    }
+
+    /// Set the configuration of the table.
+    pub fn configuration(mut self, configuration: HashMap<String, String>) -> Self {
+        self.configuration = configuration;
+        self
+    }
+
+    /// Set the version of the table.
+    pub fn version(mut self, version: String) -> Self {
+        self.version = Some(version);
+        self
+    }
+
+    /// Set the size of the table.
+    pub fn size(mut self, size: u64) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    /// Set the number of files in the table.
+    pub fn num_files(mut self, num_files: u64) -> Self {
+        self.num_files = Some(num_files);
+        self
+    }
+
+    /// Build the Metadata.
+    pub fn build(self) -> Metadata {
+        Metadata {
+            id: self.id,
+            name: self.name,
+            description: self.description,
+            format: self.format,
+            schema_string: self.schema_string,
+            partition_columns: self.partition_columns,
+            configuration: self.configuration,
+            version: self.version,
+            size: self.size,
+            num_files: self.num_files,
+        }
+    }
+}
+
 /// Representation of data that is part of a table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +171,7 @@ pub struct File {
     /// A unique identifier for the data file in the table.
     pub id: String,
     /// A map from partition column to value for this file in the table.
-    pub partition_values: HashMap<String, String>,
+    pub partition_values: HashMap<String, Option<String>>,
     /// The size of this file in bytes.
     pub size: u64,
     /// Summary statistics about the data in this file.
@@ -97,7 +195,7 @@ pub struct Add {
     /// A unique identifier for the data file in the table.
     pub id: String,
     /// A map from partition column to value for this file in the table.
-    pub partition_values: HashMap<String, String>,
+    pub partition_values: HashMap<String, Option<String>>,
     /// The size of the file in bytes.
     pub size: u64,
     /// Summary statistics about the data in this file.
@@ -121,7 +219,7 @@ pub struct Cdf {
     /// A unique identifier for the data file in the table.
     pub id: String,
     /// A map from partition column to value for this file in the table.
-    pub partition_values: HashMap<String, String>,
+    pub partition_values: HashMap<String, Option<String>>,
     /// The size of the file in bytes.
     pub size: u64,
     /// Summary statistics about the data in this file.
@@ -145,7 +243,7 @@ pub struct Remove {
     /// A unique identifier for the data file in the table.
     pub id: String,
     /// A map from partition column to value for this file in the table.
-    pub partition_values: HashMap<String, String>,
+    pub partition_values: HashMap<String, Option<String>>,
     /// The size of the file in bytes.
     pub size: u64,
     /// Summary statistics about the data in this file.

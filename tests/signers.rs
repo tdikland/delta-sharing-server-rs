@@ -1,5 +1,5 @@
 use aws_sdk_s3::Client;
-use delta_sharing_server_rs::signer::{s3::S3UrlSigner, UrlSigner};
+use delta_sharing_server::signer::{s3::S3UrlSigner, UrlSigner};
 
 enum IntegrationContext {
     S3(S3UrlSigner),

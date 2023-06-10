@@ -1,7 +1,5 @@
 //! Types and traits for reading table data in object storage.
 
-#![warn(missing_docs)]
-
 use std::{error::Error, fmt::Display};
 
 use async_trait::async_trait;
@@ -14,7 +12,7 @@ use crate::protocol::table::{
 pub mod delta;
 
 /// Trait for reading a specific table format from cloud storage.
-#[mockall::automock]
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait TableReader: Send + Sync {
     /// Retrieve the table version number that corresponds to the version

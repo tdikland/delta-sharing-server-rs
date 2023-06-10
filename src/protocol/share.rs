@@ -26,7 +26,7 @@ impl ListCursor {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::share::ListCursor;
+    /// use delta_sharing_server::protocol::share::ListCursor;
     ///
     /// let cursor = ListCursor::new(Some(3), None);
     /// assert_eq!(cursor.max_results(), Some(3));
@@ -40,7 +40,7 @@ impl ListCursor {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::share::ListCursor;
+    /// use delta_sharing_server::protocol::share::ListCursor;
     ///
     /// let cursor = ListCursor::new(None, Some(String::from("page1")));
     /// assert_eq!(cursor.page_token(), Some("page1"));
@@ -54,7 +54,7 @@ impl ListCursor {
     /// # Example
     ///
     /// ```rust
-    /// use delta_sharing_server_rs::protocol::share::ListCursor;
+    /// use delta_sharing_server::protocol::share::ListCursor;
     ///
     /// let cursor = ListCursor::new(None, Some(String::from("page1")));
     /// assert!(cursor.has_page_token());

@@ -17,7 +17,7 @@
 //! In order to provide flexibility, this crate is build around three core
 //! abstractions.
 //!
-//! - TableManager: This trait is responsible for the communication between
+//! - ShareReader: This trait is responsible for the communication between
 //! sharing server and the source system for shares, schemas and tables.
 //! - TableReader: This trait is responsible for reading tables of a specified
 //! table format
@@ -26,11 +26,11 @@
 //!
 //! ```rust,no_run
 //! # use std::sync::Arc;
-//! use delta_sharing_server_rs::manager::dynamo::DynamoShareReader;
-//! use delta_sharing_server_rs::reader::delta::DeltaTableReader;
-//! use delta_sharing_server_rs::signer::s3::S3UrlSigner;
-//! use delta_sharing_server_rs::router::build_sharing_server_router;
-//! use delta_sharing_server_rs::state::SharingServerState;
+//! use delta_sharing_server::manager::dynamo::DynamoShareReader;
+//! use delta_sharing_server::reader::delta::DeltaTableReader;
+//! use delta_sharing_server::signer::s3::S3UrlSigner;
+//! use delta_sharing_server::router::build_sharing_server_router;
+//! use delta_sharing_server::state::SharingServerState;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -60,12 +60,14 @@
 //! }
 //! ```
 
+#![warn(missing_docs)]
+
 pub mod manager;
 pub mod protocol;
 pub mod reader;
 pub mod signer;
 
-mod error;
+pub mod error;
 mod extract;
 mod handler;
 mod response;

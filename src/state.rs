@@ -1,3 +1,5 @@
+//! Delta Sharing server state.
+
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
@@ -12,6 +14,7 @@ use crate::{
     signer::UrlSigner,
 };
 
+/// State of the sharing server.
 #[derive(Clone)]
 pub struct SharingServerState {
     shared_table_manager: Arc<dyn ShareReader>,
@@ -20,6 +23,7 @@ pub struct SharingServerState {
 }
 
 impl SharingServerState {
+    /// Create a new sharing server state.
     pub fn new(manager: Arc<dyn ShareReader>) -> Self {
         Self {
             shared_table_manager: manager,
@@ -28,34 +32,42 @@ impl SharingServerState {
         }
     }
 
+    /// Add a table reader to the state.
     pub fn add_table_reader(&mut self, format: impl Into<String>, reader: Arc<dyn TableReader>) {
         self.table_readers.insert(format.into(), reader);
     }
 
+    /// Add a url signer to the state.
     pub fn add_url_signer(&mut self, storage: impl Into<String>, signer: Arc<dyn UrlSigner>) {
         self.url_signers.insert(storage.into(), signer);
     }
 
+    /// Set the table readers.
     pub fn set_table_readers(&mut self, readers: HashMap<String, Arc<dyn TableReader>>) {
         self.table_readers = readers;
     }
 
+    /// Set the url signers.
     pub fn set_url_signers(&mut self, signers: HashMap<String, Arc<dyn UrlSigner>>) {
         self.url_signers = signers;
     }
 
+    /// Get the share rearder.
     pub fn table_manager(&self) -> Arc<dyn ShareReader> {
         self.shared_table_manager.clone()
     }
 
+    /// Get the table reader for a specific format.
     pub fn table_reader(&self, format: &str) -> Option<Arc<dyn TableReader>> {
         self.table_readers.get(format).cloned()
     }
 
+    /// Get the url signer for a specific object store.
     pub fn url_signer(&self, storage: &str) -> Option<Arc<dyn UrlSigner>> {
         self.url_signers.get(storage).cloned()
     }
 
+    /// Get a list of shares in the share store.
     pub async fn list_shares(
         &self,
         cursor: &ListCursor,
@@ -64,11 +76,13 @@ impl SharingServerState {
         Ok(shares.into())
     }
 
+    /// Get a share from the share store.
     pub async fn get_share(&self, share_name: &str) -> Result<GetShareResponse, ServerError> {
         let share = self.shared_table_manager.get_share(share_name).await?;
         Ok(share.into())
     }
 
+    /// Get a list of schemas in a share.
     pub async fn list_schemas(
         &self,
         share_name: &str,
@@ -81,6 +95,7 @@ impl SharingServerState {
         Ok(schemas.into())
     }
 
+    /// Get a list of tables in a share.
     pub async fn list_tables_in_share(
         &self,
         share_name: &str,
@@ -93,6 +108,7 @@ impl SharingServerState {
         Ok(tables.into())
     }
 
+    /// Get a list of tables in a schema.
     pub async fn list_tables_in_schema(
         &self,
         share_name: &str,
@@ -106,6 +122,7 @@ impl SharingServerState {
         Ok(tables.into())
     }
 
+    /// Get the version of a table.
     pub async fn get_table_version(
         &self,
         share_name: &str,
@@ -128,6 +145,7 @@ impl SharingServerState {
         Ok(table_version.into())
     }
 
+    /// Get the metadata of a table.
     pub async fn get_table_metadata(
         &self,
         share_name: &str,
@@ -150,6 +168,7 @@ impl SharingServerState {
         Ok(table_metadata.into())
     }
 
+    /// Get the data files of a table version.
     pub async fn get_table_data(
         &self,
         share_name: &str,
@@ -664,7 +683,7 @@ mod test {
                 data: vec![UnsignedDataFile::File( File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file1".to_owned(),
                     id: "8b0086f2-7b27-4935-ac5a-8ed6215a6640".to_owned(),
-                    partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]),
+                    partition_values: HashMap::from([("date".to_owned(), Some("2021-04-28".to_owned()))]),
                     size: 573,
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()),
                     version: None,
@@ -673,7 +692,7 @@ mod test {
                 }), UnsignedDataFile::File (File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file2".to_owned(),
                     id: "591723a8-6a27-4240-a90e-57426f4736d2".to_owned(),
-                    partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]),
+                    partition_values: HashMap::from([("date".to_owned(), Some("2021-04-28".to_owned()))]),
                     size: 573,
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()),
                     version: None,
@@ -708,7 +727,7 @@ mod test {
                 data: vec![SignedDataFile::File( File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file1?signature=123".to_owned(),
                     id: "8b0086f2-7b27-4935-ac5a-8ed6215a6640".to_owned(),
-                    partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]),
+                    partition_values: HashMap::from([("date".to_owned(), Some("2021-04-28".to_owned()))]),
                     size: 573,
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()),
                     version: None,
@@ -717,7 +736,7 @@ mod test {
                 }), SignedDataFile::File (File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file2?signature=123".to_owned(),
                     id: "591723a8-6a27-4240-a90e-57426f4736d2".to_owned(),
-                    partition_values: HashMap::from([("date".to_owned(), "2021-04-28".to_owned())]),
+                    partition_values: HashMap::from([("date".to_owned(), Some("2021-04-28".to_owned()))]),
                     size: 573,
                     stats: Some("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}".to_owned()),
                     version: None,

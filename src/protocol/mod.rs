@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 //! Types for implementing the Delta Sharing protocol.
 
 pub mod action;
