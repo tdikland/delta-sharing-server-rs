@@ -20,7 +20,7 @@ impl S3UrlSigner {
 
 #[async_trait]
 impl UrlSigner for S3UrlSigner {
-    async fn sign(&self, path: &str) -> String {
+    async fn sign_url(&self, path: &str) -> String {
         let uri = Uri::try_from(path).unwrap();
         let bucket = uri.host().unwrap();
         let key = &uri.path()[1..];

@@ -1,3 +1,5 @@
+//! TableManager implementation leveraging MySQL as backing store.
+
 use async_trait::async_trait;
 use sqlx::mysql::{MySqlPoolOptions, MySqlRow};
 use sqlx::MySqlPool;

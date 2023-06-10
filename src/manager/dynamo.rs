@@ -34,26 +34,26 @@ use crate::protocol::securable::{Schema, Share, Table};
 
 use super::{List, ListCursor, TableManager, TableManagerError};
 
-// TABLE LAYOUT
-// ------------
-//
-// | PK | SK | share_id | storage_path | table_id
-// SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL | SHARE | share1_id
-// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#ALL | SCHEMA |
-// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} | TABLE | share1_id | s3://my-data-bucket/my-table-root/ | table1_id
-
-// Key
-// 1. KEY: PK+SK
-// 2. GSI: SK+PK
-//
-// Implemented query patterns
-// 1. QUERY on GSI with SK = SHARE
-// 2. GET on KEY with PK = SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL
-// 3. QUERY on GSI with SK = SCHEMA AND PK begins_with(SHARE#{share_name})
-// 4. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name}#SCHEMA#{schema_name})
-// 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
-// 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
-
+/// TableManager using AWS DynamoDB to store shared objects.
+///
+/// ## Table layout
+///
+/// | PK | SK | share_id | storage_path | table_id
+/// SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL | SHARE | share1_id
+/// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#ALL | SCHEMA |
+/// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} | TABLE | share1_id | s3://my-data-bucket/my-table-root/ | table1_id
+///
+///  Key
+/// 1. KEY: PK+SK
+/// 2. GSI: SK+PK
+///
+/// Implemented query patterns
+/// 1. QUERY on GSI with SK = SHARE
+/// 2. GET on KEY with PK = SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL
+/// 3. QUERY on GSI with SK = SCHEMA AND PK begins_with(SHARE#{share_name})
+/// 4. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name}#SCHEMA#{schema_name})
+/// 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
+/// 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
 #[derive(Debug)]
 pub struct DynamoTableManager {
     client: Client,
@@ -62,6 +62,8 @@ pub struct DynamoTableManager {
 }
 
 impl DynamoTableManager {
+    /// Create a new TableManager using the AWS DynamoDB client alogn with
+    /// table_name and GSI index name.
     pub fn new(client: Client, table_name: String, index_name: String) -> Self {
         Self {
             client,

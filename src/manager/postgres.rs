@@ -1,3 +1,5 @@
+//! TableManager implementation leveraging Postgres as backing store.
+
 use async_trait::async_trait;
 use sqlx::{
     postgres::{PgPoolOptions, PgRow},

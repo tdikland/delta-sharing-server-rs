@@ -12,7 +12,7 @@ impl IntegrationContext {
 
     pub async fn sign(&self, path: &str) -> String {
         match self {
-            Self::S3(signer) => signer.sign(path).await,
+            Self::S3(signer) => signer.sign_url(path).await,
         }
     }
 }
