@@ -10,10 +10,12 @@ use crate::protocol::table::{
 
 use super::{TableReader, TableReaderError};
 
+/// TableReader implementation for the Delta Lake format.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeltaTableReader;
 
 impl DeltaTableReader {
+    /// Create a new instance of the Delta Lake TableReader.
     pub fn new() -> Self {
         Self {}
     }
