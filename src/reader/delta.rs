@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::action::{File, MetadataBuilder, Protocol};
+use crate::protocol::action::{File, MetadataBuilder, ProtocolBuilder};
 use crate::protocol::table::{
     TableMetadata, TableVersionNumber, UnsignedDataFile, UnsignedTableData, Version, VersionRange,
 };
@@ -52,7 +52,9 @@ impl TableReader for DeltaTableReader {
         let delta_table = deltalake::open_table(storage_path).await?;
 
         let min_reader_version = delta_table.get_min_reader_version() as u32;
-        let table_protocol = Protocol { min_reader_version };
+        let table_protocol = ProtocolBuilder::new()
+            .min_reader_version(min_reader_version)
+            .build();
 
         let metadata = delta_table.get_metadata()?;
         let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();
@@ -85,7 +87,9 @@ impl TableReader for DeltaTableReader {
         delta_table.load_version(version as i64).await?;
 
         let min_reader_version = delta_table.get_min_reader_version() as u32;
-        let table_protocol = Protocol { min_reader_version };
+        let table_protocol = ProtocolBuilder::new()
+            .min_reader_version(min_reader_version)
+            .build();
 
         let metadata = delta_table.get_metadata()?;
         let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();

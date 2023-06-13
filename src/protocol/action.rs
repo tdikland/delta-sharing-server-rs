@@ -17,7 +17,53 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct Protocol {
     /// The minimum version of the protocol that the client must support.
-    pub min_reader_version: u32,
+    min_reader_version: u32,
+}
+
+impl Protocol {
+    /// Retrieve the minimum version of the protocol that the client must
+    /// implement to read this table.
+    pub fn min_reader_version(&self) -> u32 {
+        self.min_reader_version
+    }
+}
+
+/// Configure a protocol action.
+pub struct ProtocolBuilder {
+    min_reader_version: u32,
+}
+
+impl ProtocolBuilder {
+    /// Initialize a new ProtocolBuilder.
+    pub fn new() -> Self {
+        Self {
+            min_reader_version: 1,
+        }
+    }
+
+    /// Set the minimum version of the protocol that the client must support.
+    ///
+    /// # Example
+    /// ```
+    /// use delta_sharing_server::protocol::action::ProtocolBuilder;
+    ///
+    /// let protocol = ProtocolBuilder::new()
+    ///    .min_reader_version(2)
+    ///    .build();
+    ///
+    /// assert_eq!(protocol.min_reader_version(), 2);
+    /// ```
+    pub fn min_reader_version(mut self, min_reader_version: u32) -> Self {
+        self.min_reader_version = min_reader_version;
+        self
+    }
+
+    /// Build the configured protocol action.
+    pub fn build(self) -> Protocol {
+        Protocol {
+            min_reader_version: self.min_reader_version,
+        }
+    }
 }
 
 /// Representation of the table metadata.
@@ -27,33 +73,74 @@ pub struct Protocol {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Metadata {
-    /// Unique table identifier
-    pub id: String,
-    /// Table name provided by the user
+    id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Table description provided by the user
+    name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Specification of the table format
-    pub format: FileFormat,
-    /// Schema of the table, serialized as a string. This string can be
-    /// deserialized into a Schema type.
-    pub schema_string: String,
-    /// An array of column names that are used to partition the table.
-    pub partition_columns: Vec<String>,
+    description: Option<String>,
+    format: FileFormat,
+    schema_string: String,
+    partition_columns: Vec<String>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    /// A map containing configuration options for the table.
-    pub configuration: HashMap<String, String>,
-    /// The version of the table this metadata corresponds to.
+    configuration: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
+    version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// The size of the table in bytes.
-    pub size: Option<u64>,
-    /// The number of files in the table.
+    size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_files: Option<u64>,
+    num_files: Option<u64>,
+}
+
+impl Metadata {
+    /// Retrieve the unique table identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Retrieve the table name provided by the user.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Retrieve the table description provided by the user.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// Retrieve the specification of the table format.
+    pub fn format(&self) -> &FileFormat {
+        &self.format
+    }
+
+    /// Retrieve the schema of the table, serialized as a string.
+    pub fn schema_string(&self) -> &str {
+        &self.schema_string
+    }
+
+    /// Retrieve an array of column names that are used to partition the table.
+    pub fn partition_columns(&self) -> &[String] {
+        &self.partition_columns
+    }
+
+    /// Retrieve a map containing configuration options for the table.
+    pub fn configuration(&self) -> &HashMap<String, String> {
+        &self.configuration
+    }
+
+    /// Retrieve the version of the table this metadata corresponds to.
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    /// Retrieve the size of the table in bytes.
+    pub fn size(&self) -> Option<u64> {
+        self.size
+    }
+
+    /// Retrieve the number of files in the table.
+    pub fn num_files(&self) -> Option<u64> {
+        self.num_files
+    }
 }
 
 /// Representation of the table format.

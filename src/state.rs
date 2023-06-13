@@ -206,7 +206,7 @@ mod test {
     use crate::{
         manager::{MockShareReader, ShareReaderError},
         protocol::{
-            action::{File, FileFormat, Metadata, Protocol},
+            action::{File, MetadataBuilder, ProtocolBuilder},
             securable::{Schema, Share, Table},
             share::List,
             table::{
@@ -595,29 +595,17 @@ mod test {
             });
 
         let mut mock_delta_reader = MockTableReader::new();
+
+        let table_metadata = MetadataBuilder::new("f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2", "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}").partition_columns(vec!["date".to_owned()]).build();
+
         mock_delta_reader
             .expect_get_table_metadata()
             .with(eq("s3://vaccine_share/acme_vaccine_data/vaccine_patients"))
             .once()
             .return_const(Ok(TableMetadata {
                 version: 123u64,
-                protocol: Protocol {
-                    min_reader_version: 1,
-                },
-                metadata: Metadata {
-                    id: "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2".to_owned(),
-                    name: None,
-                    description: None,
-                    format: FileFormat {
-                        provider: "parquet".to_owned(),
-                    },
-                    schema_string: "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}".to_owned(),
-                    partition_columns: vec!["date".to_owned()],
-                    configuration: HashMap::new(),
-                    version: None,
-                    size: None,
-                    num_files: None,
-                },
+                protocol: ProtocolBuilder::new().build(),
+                metadata: table_metadata,
             }));
 
         let mut state = SharingServerState::new(Arc::new(mock_table_manager));
@@ -656,6 +644,8 @@ mod test {
                 ))
             });
 
+        let table_metadata = MetadataBuilder::new("f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2", "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}").partition_columns(vec!["date".to_owned()]).build();
+
         let mut mock_delta_reader = MockTableReader::new();
         mock_delta_reader
             .expect_get_table_data()
@@ -663,23 +653,8 @@ mod test {
             .once()
             .return_const(Ok(UnsignedTableData {
                 version: 123u64,
-                protocol: Protocol {
-                    min_reader_version: 1,
-                },
-                metadata: Metadata {
-                    id: "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2".to_owned(),
-                    name: None,
-                    description: None,
-                    format: FileFormat {
-                        provider: "parquet".to_owned(),
-                    },
-                    schema_string: "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}".to_owned(),
-                    partition_columns: vec!["date".to_owned()],
-                    configuration: HashMap::new(),
-                    version: None,
-                    size: None,
-                    num_files: None,
-                },
+                protocol: ProtocolBuilder::new().build(),
+                metadata: table_metadata,
                 data: vec![UnsignedDataFile::File( File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file1".to_owned(),
                     id: "8b0086f2-7b27-4935-ac5a-8ed6215a6640".to_owned(),
@@ -701,29 +676,16 @@ mod test {
                 })],
             }));
 
+        let table_metadata = MetadataBuilder::new("f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2", "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}").partition_columns(vec!["date".to_owned()]).build();
+
         let mut mock_url_signer = MockUrlSigner::new();
         mock_url_signer
             .expect_sign_table_data()
             .times(1)
             .return_const(SignedTableData {
                 version: 123u64,
-                protocol: Protocol {
-                    min_reader_version: 1,
-                },
-                metadata: Metadata {
-                    id: "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2".to_owned(),
-                    name: None,
-                    description: None,
-                    format: FileFormat {
-                        provider: "parquet".to_owned(),
-                    },
-                    schema_string: "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}".to_owned(),
-                    partition_columns: vec!["date".to_owned()],
-                    configuration: HashMap::new(),
-                    version: None,
-                    size: None,
-                    num_files: None,
-                },
+                protocol: ProtocolBuilder::new().build(),
+                metadata: table_metadata,
                 data: vec![SignedDataFile::File( File {
                     url:"https://test-bucket.s3.eu-west-1.amazonaws.com/file1?signature=123".to_owned(),
                     id: "8b0086f2-7b27-4935-ac5a-8ed6215a6640".to_owned(),
