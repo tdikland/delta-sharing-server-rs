@@ -275,7 +275,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_1",
-                        &format!("s3://bucket/table_111/"),
+                        &"s3://bucket/table_111/".to_string(),
                         None,
                     )
                     .await
@@ -284,7 +284,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_2",
-                        &format!("s3://bucket/table_112/"),
+                        &"s3://bucket/table_112/".to_string(),
                         None,
                     )
                     .await
@@ -293,7 +293,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_3",
-                        &format!("s3://bucket/table_113/"),
+                        &"s3://bucket/table_113/".to_string(),
                         None,
                     )
                     .await
@@ -302,7 +302,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_4",
-                        &format!("s3://bucket/table_114/"),
+                        &"s3://bucket/table_114/".to_string(),
                         None,
                     )
                     .await
@@ -311,7 +311,7 @@ impl Manager {
                     .insert_table(
                         &schema_12,
                         "table_1",
-                        &format!("s3://bucket/table_121/"),
+                        &"s3://bucket/table_121/".to_string(),
                         None,
                     )
                     .await
@@ -320,7 +320,7 @@ impl Manager {
                     .insert_table(
                         &schema_12,
                         "table_2",
-                        &format!("s3://bucket/table_122/"),
+                        &"s3://bucket/table_122/".to_string(),
                         None,
                     )
                     .await
@@ -339,7 +339,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_1",
-                        &format!("s3://bucket/table_111/"),
+                        &"s3://bucket/table_111/".to_string(),
                         None,
                     )
                     .await
@@ -348,7 +348,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_2",
-                        &format!("s3://bucket/table_112/"),
+                        &"s3://bucket/table_112/".to_string(),
                         None,
                     )
                     .await
@@ -357,7 +357,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_3",
-                        &format!("s3://bucket/table_113/"),
+                        &"s3://bucket/table_113/".to_string(),
                         None,
                     )
                     .await
@@ -366,7 +366,7 @@ impl Manager {
                     .insert_table(
                         &schema_11,
                         "table_4",
-                        &format!("s3://bucket/table_114/"),
+                        &"s3://bucket/table_114/".to_string(),
                         None,
                     )
                     .await
@@ -375,7 +375,7 @@ impl Manager {
                     .insert_table(
                         &schema_12,
                         "table_1",
-                        &format!("s3://bucket/table_121/"),
+                        &"s3://bucket/table_121/".to_string(),
                         None,
                     )
                     .await
@@ -384,7 +384,7 @@ impl Manager {
                     .insert_table(
                         &schema_12,
                         "table_2",
-                        &format!("s3://bucket/table_122/"),
+                        &"s3://bucket/table_122/".to_string(),
                         None,
                     )
                     .await
