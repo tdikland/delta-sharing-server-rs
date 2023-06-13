@@ -392,7 +392,7 @@ mod test {
                     None,
                 ));
                 tables.push(Table::new(
-                    schema.clone(),
+                    schema,
                     "vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
                     "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
@@ -435,7 +435,7 @@ mod test {
                     None,
                 ));
                 tables.push(Table::new(
-                    schema.clone(),
+                    schema,
                     "vaccine_patients".to_owned(),
                     Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
                     "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),

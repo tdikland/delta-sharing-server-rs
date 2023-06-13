@@ -272,57 +272,27 @@ impl Manager {
                 let _schema_21 = pg.insert_schema(&share2, "schema_1").await.unwrap();
 
                 let _table_111 = pg
-                    .insert_table(
-                        &schema_11,
-                        "table_1",
-                        &"s3://bucket/table_111/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_1", "s3://bucket/table_111/", None)
                     .await
                     .unwrap();
                 let _table_112 = pg
-                    .insert_table(
-                        &schema_11,
-                        "table_2",
-                        &"s3://bucket/table_112/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_2", "s3://bucket/table_112/", None)
                     .await
                     .unwrap();
                 let _table_113 = pg
-                    .insert_table(
-                        &schema_11,
-                        "table_3",
-                        &"s3://bucket/table_113/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_3", "s3://bucket/table_113/", None)
                     .await
                     .unwrap();
                 let _table_114 = pg
-                    .insert_table(
-                        &schema_11,
-                        "table_4",
-                        &"s3://bucket/table_114/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_4", "s3://bucket/table_114/", None)
                     .await
                     .unwrap();
                 let _table_121 = pg
-                    .insert_table(
-                        &schema_12,
-                        "table_1",
-                        &"s3://bucket/table_121/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_12, "table_1", "s3://bucket/table_121/", None)
                     .await
                     .unwrap();
                 let _table_122 = pg
-                    .insert_table(
-                        &schema_12,
-                        "table_2",
-                        &"s3://bucket/table_122/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_12, "table_2", "s3://bucket/table_122/", None)
                     .await
                     .unwrap();
             }
@@ -336,57 +306,27 @@ impl Manager {
                 let _schema_21 = mysql.insert_schema(&share2, "schema_1").await.unwrap();
 
                 let _table_111 = mysql
-                    .insert_table(
-                        &schema_11,
-                        "table_1",
-                        &"s3://bucket/table_111/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_1", "s3://bucket/table_111/", None)
                     .await
                     .unwrap();
                 let _table_112 = mysql
-                    .insert_table(
-                        &schema_11,
-                        "table_2",
-                        &"s3://bucket/table_112/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_2", "s3://bucket/table_112/", None)
                     .await
                     .unwrap();
                 let _table_113 = mysql
-                    .insert_table(
-                        &schema_11,
-                        "table_3",
-                        &"s3://bucket/table_113/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_3", "s3://bucket/table_113/", None)
                     .await
                     .unwrap();
                 let _table_114 = mysql
-                    .insert_table(
-                        &schema_11,
-                        "table_4",
-                        &"s3://bucket/table_114/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_11, "table_4", "s3://bucket/table_114/", None)
                     .await
                     .unwrap();
                 let _table_121 = mysql
-                    .insert_table(
-                        &schema_12,
-                        "table_1",
-                        &"s3://bucket/table_121/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_12, "table_1", "s3://bucket/table_121/", None)
                     .await
                     .unwrap();
                 let _table_122 = mysql
-                    .insert_table(
-                        &schema_12,
-                        "table_2",
-                        &"s3://bucket/table_122/".to_string(),
-                        None,
-                    )
+                    .insert_table(&schema_12, "table_2", "s3://bucket/table_122/", None)
                     .await
                     .unwrap();
             }
