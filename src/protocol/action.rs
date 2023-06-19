@@ -253,24 +253,119 @@ impl MetadataBuilder {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct File {
+    url: String,
+    id: String,
+    partition_values: HashMap<String, Option<String>>,
+    size: u64,
+    stats: Option<String>,
+    version: Option<u64>,
+    timestamp: Option<String>,
+    expiration_timestamp: Option<String>,
+}
+
+impl File {
     /// An HTTPS url that a client can use to directly read the data file.
-    pub url: String,
+    pub fn url(&self) -> &str {
+        self.url.as_ref()
+    }
+
     /// A unique identifier for the data file in the table.
-    pub id: String,
+    pub fn id(&self) -> &str {
+        self.id.as_ref()
+    }
+
     /// A map from partition column to value for this file in the table.
-    pub partition_values: HashMap<String, Option<String>>,
+    pub fn partition_values(&self) -> &HashMap<String, Option<String>> {
+        &self.partition_values
+    }
+
     /// The size of this file in bytes.
-    pub size: u64,
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
     /// Summary statistics about the data in this file.
-    pub stats: Option<String>,
+    pub fn stats(&self) -> Option<&str> {
+        self.stats.as_deref()
+    }
+
     /// The table version associated with this file.
-    pub version: Option<u64>,
+    pub fn version(&self) -> Option<u64> {
+        self.version
+    }
+
     /// The unix timestamp in milliseconds corresponding to the table version
     /// associated with this file.
-    pub timestamp: Option<String>,
+    pub fn timestamp(&self) -> Option<&str> {
+        self.timestamp.as_deref()
+    }
+
     /// The unix timestamp in milliseconds corresponding to the expiration of
     /// the url associated with this file.
-    pub expiration_timestamp: Option<String>,
+    pub fn expiration_timestamp(&self) -> Option<&str> {
+        self.expiration_timestamp.as_deref()
+    }
+}
+
+/// Build a new File action
+pub struct FileBuilder {
+    url: String,
+    id: String,
+    partition_values: HashMap<String, Option<String>>,
+    size: u64,
+    stats: Option<String>,
+    version: Option<u64>,
+    timestamp: Option<String>,
+    expiration_timestamp: Option<String>,
+}
+
+impl FileBuilder {
+    pub fn new<S: Into<String>>(url: S, id: S, size: u64) -> Self {
+        Self {
+            url: url.into(),
+            id: id.into(),
+            partition_values: HashMap::new(),
+            size,
+            stats: None,
+            version: None,
+            timestamp: None,
+            expiration_timestamp: None,
+        }
+    }
+
+    pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
+        self.partition_values = partition_values;
+        self
+    }
+
+    pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
+        self.partition_values
+            .insert(partition.into(), value.map(Into::into));
+        self
+    }
+
+    pub fn stats(mut self, stats: impl Into<String>) -> Self {
+        self.stats = Some(stats.into());
+        self
+    }
+
+    pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
+        self.expiration_timestamp = Some(ts.into());
+        self
+    }
+
+    pub fn build(self) -> File {
+        File {
+            url: self.url,
+            id: self.id,
+            partition_values: self.partition_values,
+            size: self.size,
+            stats: self.stats,
+            version: self.version,
+            timestamp: self.timestamp,
+            expiration_timestamp: self.expiration_timestamp,
+        }
+    }
 }
 
 /// Representation of data that was added to a table.
@@ -343,4 +438,24 @@ pub struct Remove {
     /// The unix timestamp in milliseconds corresponding to the expiration of
     /// the url associated with this file.
     pub expiration_timestamp: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileBuilder;
+
+    #[test]
+    fn serialize_file() {
+        let file = FileBuilder::new(
+            "https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/tbl/f1.snappy.parquet",
+            "591723a8-6a27-4240-a90e-57426f4736d2",
+            573,
+        )
+        .add_partition_value("date", Some("2021-04-28"))
+        .stats("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}")
+        .expiration_timestamp("1652140800000")
+        .build();
+
+        insta::assert_json_snapshot!(file)
+    }
 }

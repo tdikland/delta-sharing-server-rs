@@ -110,3 +110,27 @@ pub enum SignedDataFile {
     /// A file containing data that was removed since the last table version.
     Remove(Remove),
 }
+
+impl From<File> for UnsignedDataFile {
+    fn from(v: File) -> Self {
+        Self::File(v)
+    }
+}
+
+impl From<Add> for UnsignedDataFile {
+    fn from(v: Add) -> Self {
+        Self::Add(v)
+    }
+}
+
+impl From<Cdf> for UnsignedDataFile {
+    fn from(v: Cdf) -> Self {
+        Self::Cdf(v)
+    }
+}
+
+impl From<Remove> for UnsignedDataFile {
+    fn from(v: Remove) -> Self {
+        Self::Remove(v)
+    }
+}

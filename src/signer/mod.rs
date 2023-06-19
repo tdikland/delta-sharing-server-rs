@@ -22,7 +22,7 @@ pub trait UrlSigner: Send + Sync {
     async fn sign_data_file(&self, data_file: UnsignedDataFile) -> SignedDataFile {
         match data_file {
             UnsignedDataFile::File(mut file) => {
-                file.url = self.sign_url(&file.url).await;
+                file.url = self.sign_url(&file.url()).await;
                 SignedDataFile::File(file)
             }
             UnsignedDataFile::Add(mut add) => {
