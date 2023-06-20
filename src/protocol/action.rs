@@ -257,9 +257,13 @@ pub struct File {
     id: String,
     partition_values: HashMap<String, Option<String>>,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     expiration_timestamp: Option<String>,
 }
 
@@ -267,6 +271,11 @@ impl File {
     /// An HTTPS url that a client can use to directly read the data file.
     pub fn url(&self) -> &str {
         self.url.as_ref()
+    }
+
+    /// A mutable HTTPS url that a client can use to directly read the data file.
+    pub fn url_mut(&mut self) -> &mut String {
+        &mut self.url
     }
 
     /// A unique identifier for the data file in the table.
