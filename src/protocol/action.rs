@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Protocol versioning will allow servers to exclude older clients that are
 /// missing features required to correctly interpret their response if the
 /// Delta Sharing Protocol evolves in the future. The protocol version will be
-/// increased whenever non-forward-compatible changes are made to the
+/// increased whenever non-backwards-compatible changes are made to the
 /// protocol. When a client is running an unsupported protocol version, it
 /// should show an error message instructing the user to upgrade to a newer
 /// version of their client.
@@ -401,6 +401,66 @@ pub struct Add {
     pub expiration_timestamp: Option<String>,
 }
 
+pub struct AddBuilder {
+    url: String,
+    id: String,
+    partition_values: HashMap<String, Option<String>>,
+    size: u64,
+    stats: Option<String>,
+    version: u64,
+    timestamp: String,
+    expiration_timestamp: Option<String>,
+}
+
+impl AddBuilder {
+    pub fn new<S: Into<String>>(url: S, id: S, size: u64, version: u64, timestamp: S) -> Self {
+        Self {
+            url: url.into(),
+            id: id.into(),
+            partition_values: HashMap::new(),
+            size,
+            stats: None,
+            version,
+            timestamp: timestamp.into(),
+            expiration_timestamp: None,
+        }
+    }
+
+    pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
+        self.partition_values = partition_values;
+        self
+    }
+
+    pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
+        self.partition_values
+            .insert(partition.into(), value.map(Into::into));
+        self
+    }
+
+    pub fn stats(mut self, stats: impl Into<String>) -> Self {
+        self.stats = Some(stats.into());
+        self
+    }
+
+    pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
+        self.expiration_timestamp = Some(ts.into());
+        self
+    }
+
+    pub fn build(self) -> Add {
+        Add {
+            url: self.url,
+            id: self.id,
+            partition_values: self.partition_values,
+            size: self.size,
+            stats: self.stats,
+            version: self.version,
+            timestamp: self.timestamp,
+            expiration_timestamp: self.expiration_timestamp,
+        }
+    }
+}
+
 /// Representation of a data that has changed in the table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -425,6 +485,66 @@ pub struct Cdf {
     pub expiration_timestamp: Option<String>,
 }
 
+pub struct CdfBuilder {
+    url: String,
+    id: String,
+    partition_values: HashMap<String, Option<String>>,
+    size: u64,
+    stats: Option<String>,
+    version: u64,
+    timestamp: String,
+    expiration_timestamp: Option<String>,
+}
+
+impl CdfBuilder {
+    pub fn new<S: Into<String>>(url: S, id: S, size: u64, version: u64, timestamp: S) -> Self {
+        Self {
+            url: url.into(),
+            id: id.into(),
+            partition_values: HashMap::new(),
+            size,
+            stats: None,
+            version,
+            timestamp: timestamp.into(),
+            expiration_timestamp: None,
+        }
+    }
+
+    pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
+        self.partition_values = partition_values;
+        self
+    }
+
+    pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
+        self.partition_values
+            .insert(partition.into(), value.map(Into::into));
+        self
+    }
+
+    pub fn stats(mut self, stats: impl Into<String>) -> Self {
+        self.stats = Some(stats.into());
+        self
+    }
+
+    pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
+        self.expiration_timestamp = Some(ts.into());
+        self
+    }
+
+    pub fn build(self) -> Cdf {
+        Cdf {
+            url: self.url,
+            id: self.id,
+            partition_values: self.partition_values,
+            size: self.size,
+            stats: self.stats,
+            version: self.version,
+            timestamp: self.timestamp,
+            expiration_timestamp: self.expiration_timestamp,
+        }
+    }
+}
+
 /// Representation of a data that has been removed from the table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -447,6 +567,67 @@ pub struct Remove {
     /// The unix timestamp in milliseconds corresponding to the expiration of
     /// the url associated with this file.
     pub expiration_timestamp: Option<String>,
+}
+
+/// Build a remove action
+pub struct RemoveBuilder {
+    url: String,
+    id: String,
+    partition_values: HashMap<String, Option<String>>,
+    size: u64,
+    stats: Option<String>,
+    version: Option<u64>,
+    timestamp: Option<String>,
+    expiration_timestamp: Option<String>,
+}
+
+impl RemoveBuilder {
+    pub fn new<S: Into<String>>(url: S, id: S, size: u64) -> Self {
+        Self {
+            url: url.into(),
+            id: id.into(),
+            partition_values: HashMap::new(),
+            size,
+            stats: None,
+            version: None,
+            timestamp: None,
+            expiration_timestamp: None,
+        }
+    }
+
+    pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
+        self.partition_values = partition_values;
+        self
+    }
+
+    pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
+        self.partition_values
+            .insert(partition.into(), value.map(Into::into));
+        self
+    }
+
+    pub fn stats(mut self, stats: impl Into<String>) -> Self {
+        self.stats = Some(stats.into());
+        self
+    }
+
+    pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
+        self.expiration_timestamp = Some(ts.into());
+        self
+    }
+
+    pub fn build(self) -> Remove {
+        Remove {
+            url: self.url,
+            id: self.id,
+            partition_values: self.partition_values,
+            size: self.size,
+            stats: self.stats,
+            version: self.version.unwrap_or(0),
+            timestamp: self.timestamp.unwrap_or("0".to_string()),
+            expiration_timestamp: self.expiration_timestamp,
+        }
+    }
 }
 
 #[cfg(test)]
