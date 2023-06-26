@@ -40,6 +40,4 @@ impl UrlSigner for S3UrlSigner {
 
         req.uri().to_string()
     }
-
-
 }

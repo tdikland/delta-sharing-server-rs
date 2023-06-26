@@ -15,6 +15,18 @@ use crate::protocol::securable::{Schema, Share, Table};
 
 use super::{List, ListCursor, ShareReader, ShareReaderError};
 
+/// ASSUMPTION: the writer only uses transactions to guarantee the consistency of the 
+/// shared securables (i.e. share -> schema -> table).
+/// 
+/// | SHARE#ALL | share1 | ...
+/// | SHARE#ALL | share2 | ...
+/// | SHARE#share1 | schema1 | ...
+/// | SHARE#share1 | schema2 | ...
+/// | SHARE#share2 | schema1#table1 | ...
+
+
+
+
 /// TableManager using AWS DynamoDB to store shared objects.
 ///
 /// ## Table layout

@@ -7,13 +7,21 @@ use crate::{manager::ShareReaderError, reader::TableReaderError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerError {
+    // input validation
     InvalidPagination { reason: String },
+    InvalidTableVersion,
+    InvalidTableDataPredicates,
+    InvalidTableChangePredicates,
     InvalidTableStartingTimestamp,
     InvalidTableVersionRange { reason: String },
-    UnsupportedTableFormat { format: String },
-    UnsupportedTableStorage { storage: String },
+    // securable resource not found
     ShareNotFound { name: String },
     TableNotFound { name: String },
+    // share reader errors
+
+    // table reader errors
+    UnsupportedTableFormat { format: String },
+    UnsupportedTableStorage { storage: String },
     MalformedNextPageToken,
     Other,
 }
