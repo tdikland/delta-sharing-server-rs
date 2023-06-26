@@ -1,6 +1,6 @@
 //! UrlSigner for S3 object paths.
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use aws_sdk_s3::{presigning::PresigningConfig, Client};
@@ -28,6 +28,7 @@ impl UrlSigner for S3UrlSigner {
         let key = &uri.path()[1..];
 
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(3600)).unwrap();
+        let expiration_time = presign_config.start_time() + presign_config.expires();
         let req = self
             .client
             .get_object()
@@ -39,4 +40,6 @@ impl UrlSigner for S3UrlSigner {
 
         req.uri().to_string()
     }
+
+
 }

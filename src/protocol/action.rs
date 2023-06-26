@@ -321,7 +321,7 @@ pub struct FileBuilder {
     url: String,
     id: String,
     partition_values: HashMap<String, Option<String>>,
-    size: u64,
+    size: Option<u64>,
     stats: Option<String>,
     version: Option<u64>,
     timestamp: Option<String>,
@@ -329,12 +329,13 @@ pub struct FileBuilder {
 }
 
 impl FileBuilder {
-    pub fn new<S: Into<String>>(url: S, id: S, size: u64) -> Self {
+    /// Initialize a new FileBuilder.
+    pub fn new(url: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             url: url.into(),
             id: id.into(),
             partition_values: HashMap::new(),
-            size,
+            size: None,
             stats: None,
             version: None,
             timestamp: None,
@@ -342,33 +343,57 @@ impl FileBuilder {
         }
     }
 
+    /// Set the partition values for this file.
     pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
         self.partition_values = partition_values;
         self
     }
 
-    pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
+    /// Add a partition value for this file.
+    pub fn add_partition_value(mut self, partition: impl Into<String>, value: Option<impl Into<String>>) -> Self {
         self.partition_values
             .insert(partition.into(), value.map(Into::into));
         self
     }
 
+    /// Set the size of this file in bytes.
+    pub fn size(mut self, size: u64) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    /// Set the statistics of this file.
     pub fn stats(mut self, stats: impl Into<String>) -> Self {
         self.stats = Some(stats.into());
         self
     }
 
+    /// Set the version of this file.
+    pub fn version(mut self, version: u64) -> Self {
+        self.version = Some(version);
+        self
+    }
+
+    /// Set the timestamp of this file.
+    pub fn timestamp(mut self, ts: impl Into<String>) -> Self {
+        self.timestamp = Some(ts.into());
+        self
+    }
+
+    /// Set the expiration timestamp for the url belonging to this file.
+    /// This is only relevant for urls that have been presigned.
     pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
         self.expiration_timestamp = Some(ts.into());
         self
     }
 
+    /// Build a File from the provided configuration.
     pub fn build(self) -> File {
         File {
             url: self.url,
             id: self.id,
             partition_values: self.partition_values,
-            size: self.size,
+            size: self.size.unwrap_or(0),
             stats: self.stats,
             version: self.version,
             timestamp: self.timestamp,
@@ -401,27 +426,29 @@ pub struct Add {
     pub expiration_timestamp: Option<String>,
 }
 
+/// Initialize a new AddBuilder.
 pub struct AddBuilder {
     url: String,
     id: String,
     partition_values: HashMap<String, Option<String>>,
-    size: u64,
+    size: Option<u64>,
     stats: Option<String>,
-    version: u64,
-    timestamp: String,
+    version: Option<u64>,
+    timestamp: Option<String>,
     expiration_timestamp: Option<String>,
 }
 
 impl AddBuilder {
-    pub fn new<S: Into<String>>(url: S, id: S, size: u64, version: u64, timestamp: S) -> Self {
+    /// Initialize a new AddBuilder.
+    pub fn new(url: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             url: url.into(),
             id: id.into(),
             partition_values: HashMap::new(),
-            size,
+            size: None,
             stats: None,
-            version,
-            timestamp: timestamp.into(),
+            version: None,
+            timestamp: None,
             expiration_timestamp: None,
         }
     }
@@ -452,10 +479,10 @@ impl AddBuilder {
             url: self.url,
             id: self.id,
             partition_values: self.partition_values,
-            size: self.size,
+            size: self.size.unwrap_or(0),
             stats: self.stats,
-            version: self.version,
-            timestamp: self.timestamp,
+            version: self.version.unwrap_or(0),
+            timestamp: self.timestamp.unwrap_or("0".to_owned()),
             expiration_timestamp: self.expiration_timestamp,
         }
     }
@@ -639,7 +666,6 @@ mod tests {
         let file = FileBuilder::new(
             "https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/tbl/f1.snappy.parquet",
             "591723a8-6a27-4240-a90e-57426f4736d2",
-            573,
         )
         .add_partition_value("date", Some("2021-04-28"))
         .stats("{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}")

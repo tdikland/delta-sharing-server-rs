@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::action::{File, FileBuilder, MetadataBuilder, ProtocolBuilder};
+use crate::protocol::action::{FileBuilder, MetadataBuilder, ProtocolBuilder};
 use crate::protocol::table::{
-    TableMetadata, TableVersionNumber, UnsignedDataFile, UnsignedTableData, Version, VersionRange,
+    TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
 };
 
 use super::{TableReader, TableReaderError};
@@ -107,7 +107,7 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for file in delta_table.get_state().files() {
             let url = format!("{}/{}", storage_path, file.path);
-            let f = FileBuilder::new(url, "".to_string(), file.size as u64).build();
+            let f = FileBuilder::new(url, "").build();
             table_files.push(f.into());
         }
 
