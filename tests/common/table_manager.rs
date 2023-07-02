@@ -6,7 +6,7 @@ use aws_sdk_dynamodb::types::{
 };
 use delta_sharing_server::{
     manager::{dynamo::DynamoShareReader, mysql::MySqlShareReader, postgres::PostgresShareReader},
-    protocol::securable::{Schema, Share, Table},
+    protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
 };
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};
 use std::{env, time::Duration};
@@ -334,14 +334,14 @@ impl Manager {
                 fn build_share(share_number: &str) -> Share {
                     let name = format!("share_{}", share_number);
                     let id = format!("share_id_{}", share_number);
-                    Share::new(name, Some(id))
+                    ShareBuilder::new(name).id(id).build()
                 }
 
                 fn build_schema(share_number: &str, schema_number: &str) -> Schema {
                     let share = build_share(share_number);
                     let schema_name = format!("schema_{}", schema_number);
                     let id = format!("schema_id_{}", schema_number);
-                    Schema::new(share, schema_name, Some(id))
+                    SchemaBuilder::new(share, schema_name).id(id).build()
                 }
 
                 fn build_table(
@@ -357,13 +357,10 @@ impl Manager {
                     );
                     let table_id = format!("table_id_{}", table_number);
                     let table_format = "DELTA".to_owned();
-                    Table::new(
-                        schema,
-                        table_name,
-                        Some(table_id),
-                        storage_path,
-                        Some(table_format),
-                    )
+                    TableBuilder::new(schema, table_name, storage_path)
+                        .id(table_id)
+                        .format(table_format)
+                        .build()
                 }
 
                 let shares = ["1", "2", "3"]

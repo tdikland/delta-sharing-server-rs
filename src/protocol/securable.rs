@@ -15,39 +15,7 @@ pub struct Share {
     id: Option<String>,
 }
 
-/// The type of a schema as defined in the Delta Sharing protocol.
-///
-/// A schema is a logical grouping of tables. A schema may contain multiple
-/// tables. A schema is defined within the context of a [`Share`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
-pub struct Schema {
-    share: Share,
-    name: String,
-    id: Option<String>,
-}
-
-/// The type of a table as defined in the Delta Sharing protocol.
-///
-/// A table is a Delta Lake table or a view on top of a Delta Lake table. A
-/// table is defined within the context of a [`Schema`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
-pub struct Table {
-    schema: Schema,
-    name: String,
-    id: Option<String>,
-    storage_path: String,
-    format: String,
-}
-
 impl Share {
-    /// Create a new `Share` with the given `name` and `id`.
-    pub fn new<S: Into<String>>(name: S, id: Option<S>) -> Self {
-        Self {
-            name: name.into(),
-            id: id.map(Into::into),
-        }
-    }
-
     /// Retrieve the name from `self`.
     ///
     /// # Example
@@ -77,22 +45,60 @@ impl Share {
     }
 }
 
+/// Builder for [`Share`].
+pub struct ShareBuilder {
+    name: String,
+    id: Option<String>,
+}
+
+impl ShareBuilder {
+    /// Create a new `ShareBuilder`.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            id: None,
+        }
+    }
+
+    /// Set the id of the share.
+    pub fn id<S: Into<String>>(mut self, id: S) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Set the id of the share.
+    pub fn set_id<S: Into<String>>(mut self, id: Option<S>) -> Self {
+        self.id = id.map(Into::into);
+        self
+    }
+
+    /// Build the [`Share`].
+    pub fn build(self) -> Share {
+        Share {
+            name: self.name,
+            id: self.id,
+        }
+    }
+}
+
 impl Display for Share {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
     }
 }
 
-impl Schema {
-    /// Create a new `Schema` with the given [`Share`], `name` and `id`.
-    pub fn new<S: Into<String>>(share: Share, name: S, id: Option<S>) -> Self {
-        Self {
-            share,
-            name: name.into(),
-            id: id.map(Into::into),
-        }
-    }
+/// The type of a schema as defined in the Delta Sharing protocol.
+///
+/// A schema is a logical grouping of tables. A schema may contain multiple
+/// tables. A schema is defined within the context of a [`Share`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
+pub struct Schema {
+    share: Share,
+    name: String,
+    id: Option<String>,
+}
 
+impl Schema {
     /// Returns the name of the share associated with `self`
     ///
     /// # Example
@@ -154,35 +160,65 @@ impl Schema {
     }
 }
 
+/// Builder for [`Schema`].
+pub struct SchemaBuilder {
+    share: Share,
+    name: String,
+    id: Option<String>,
+}
+
+impl SchemaBuilder {
+    /// Create a new `SchemaBuilder`.
+    pub fn new(share: Share, schema_name: impl Into<String>) -> Self {
+        Self {
+            share,
+            name: schema_name.into(),
+            id: None,
+        }
+    }
+
+    /// Set the id of the schema.
+    pub fn id<S: Into<String>>(mut self, id: S) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Set the id of the schema.
+    pub fn set_id<S: Into<String>>(mut self, id: Option<S>) -> Self {
+        self.id = id.map(Into::into);
+        self
+    }
+
+    /// Build the [`Schema`].
+    pub fn build(self) -> Schema {
+        Schema {
+            share: self.share,
+            name: self.name,
+            id: self.id,
+        }
+    }
+}
+
 impl Display for Schema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.share_name(), self.name())
     }
 }
 
-impl Table {
-    /// Create a new `Table` with the given [`Schema`], `name`, `storage_path`,
-    ///  `table_id` and `table_format`. Whenever the `table_id` is `None`, it
-    /// will default to `DELTA`
-    pub fn new<S: Into<String>>(
-        schema: Schema,
-        name: S,
-        id: Option<S>,
-        storage_path: S,
-        table_format: Option<S>,
-    ) -> Self {
-        let format = table_format
-            .map(Into::into)
-            .unwrap_or(String::from("DELTA"));
-        Self {
-            schema,
-            name: name.into(),
-            storage_path: storage_path.into(),
-            id: id.map(Into::into),
-            format,
-        }
-    }
+/// The type of a table as defined in the Delta Sharing protocol.
+///
+/// A table is a Delta Lake table or a view on top of a Delta Lake table. A
+/// table is defined within the context of a [`Schema`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Hash)]
+pub struct Table {
+    schema: Schema,
+    name: String,
+    id: Option<String>,
+    storage_path: String,
+    format: String,
+}
 
+impl Table {
     /// Returns the name of the share associated with `self`
     ///
     /// # Example
@@ -317,6 +353,67 @@ impl Table {
     }
 }
 
+/// Builder for `Table`
+pub struct TableBuilder {
+    schema: Schema,
+    name: String,
+    id: Option<String>,
+    storage_path: String,
+    format: Option<String>,
+}
+
+impl TableBuilder {
+    /// Creates a new `TableBuilder` with the given `schema`, `table_name` and `storage_path`
+    pub fn new(
+        schema: Schema,
+        table_name: impl Into<String>,
+        storage_path: impl Into<String>,
+    ) -> Self {
+        Self {
+            schema,
+            name: table_name.into(),
+            id: None,
+            storage_path: storage_path.into(),
+            format: None,
+        }
+    }
+
+    /// Sets the id of the table
+    pub fn id<S: Into<String>>(mut self, id: S) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Sets the id of the table
+    pub fn set_id<S: Into<String>>(mut self, id: Option<S>) -> Self {
+        self.id = id.map(Into::into);
+        self
+    }
+
+    /// Sets the format of the table
+    pub fn format<S: Into<String>>(mut self, format: S) -> Self {
+        self.format = Some(format.into());
+        self
+    }
+
+    /// Sets the format of the table
+    pub fn set_format<S: Into<String>>(mut self, format: Option<S>) -> Self {
+        self.format = format.map(Into::into);
+        self
+    }
+
+    /// Builds a `Table` from the current `TableBuilder`
+    pub fn build(self) -> Table {
+        Table {
+            schema: self.schema,
+            name: self.name,
+            id: self.id,
+            storage_path: self.storage_path,
+            format: self.format.unwrap_or_else(|| "DELTA".to_string()),
+        }
+    }
+}
+
 impl Display for Table {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -335,28 +432,22 @@ mod tests {
 
     #[test]
     fn display_share() {
-        let share = Share::new("share", Some("id"));
+        let share = ShareBuilder::new("share").id("share_id").build();
         assert_eq!(format!("{}", share), "share");
     }
 
     #[test]
     fn display_schema() {
-        let share = Share::new("share", Some("share_id"));
-        let schema = Schema::new(share, "schema", Some("schema_id"));
+        let share = ShareBuilder::new("share").build();
+        let schema = SchemaBuilder::new(share, "schema").build();
         assert_eq!(format!("{}", schema), "share.schema");
     }
 
     #[test]
     fn display_table() {
-        let share = Share::new("share", Some("share_id"));
-        let schema = Schema::new(share, "schema", Some("schema_id"));
-        let table = Table::new(
-            schema,
-            "table",
-            Some("table_id"),
-            "storage_path",
-            Some("format"),
-        );
+        let share = ShareBuilder::new("share").build();
+        let schema = SchemaBuilder::new(share, "schema").build();
+        let table = TableBuilder::new(schema, "table", "storage_path").build();
         assert_eq!(format!("{}", table), "share.schema.table");
     }
 }

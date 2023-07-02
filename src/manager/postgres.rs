@@ -7,9 +7,9 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use crate::protocol::securable::{Schema, Share, Table};
+use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
 
-use super::{List, ListCursor, ShareReader, ShareReaderError};
+use super::{List, ListCursor, ShareIoError, ShareReader};
 
 /// ShareReader implementation leveraging Postgres as backing store.
 #[derive(Debug)]
@@ -48,10 +48,10 @@ impl PostgresShareReader {
             .execute(&self.pool)
             .await?;
 
-        Ok(Share::new(
-            share_name.to_string(),
-            Some(share_id.to_string()),
-        ))
+        let share = ShareBuilder::new(share_name)
+            .id(share_id.to_string())
+            .build();
+        Ok(share)
     }
 
     async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
@@ -130,11 +130,11 @@ impl PostgresShareReader {
         .execute(&self.pool)
         .await?;
 
-        Ok(Schema::new(
-            share.clone(),
-            schema_name.to_string(),
-            Some(schema_id.to_string()),
-        ))
+        let schema = SchemaBuilder::new(share.clone(), schema_name)
+            .id(schema_id.to_string())
+            .build();
+
+        Ok(schema)
     }
 
     async fn select_schema_by_name(
@@ -233,13 +233,12 @@ impl PostgresShareReader {
         .execute(&self.pool)
         .await?;
 
-        Ok(Table::new(
-            schema.clone(),
-            table_name.to_owned(),
-            Some(uuid.to_string()),
-            storage_path.to_owned(),
-            storage_format.cloned(),
-        ))
+        let table = TableBuilder::new(schema.clone(), table_name, storage_path)
+            .id(uuid.to_string())
+            .set_format(storage_format.cloned())
+            .build();
+
+        Ok(table)
     }
 
     async fn select_tables_by_share(
@@ -432,7 +431,7 @@ impl TryFrom<PgRow> for Share {
     fn try_from(row: PgRow) -> Result<Self, Self::Error> {
         let name: String = row.try_get("share_name")?;
         let id: String = row.try_get("share_id")?;
-        Ok(Share::new(name, Some(id)))
+        Ok(ShareBuilder::new(name).id(id).build())
     }
 }
 
@@ -444,8 +443,11 @@ impl TryFrom<PgRow> for Schema {
         let share_name: String = row.try_get("share_name")?;
         let schema_id: String = row.try_get("schema_id")?;
         let schema_name: String = row.try_get("schema_name")?;
-        let share = Share::new(share_name, Some(share_id));
-        Ok(Schema::new(share, schema_name, Some(schema_id)))
+
+        let share = ShareBuilder::new(share_name).id(share_id).build();
+        let schema = SchemaBuilder::new(share, schema_name).id(schema_id).build();
+
+        Ok(schema)
     }
 }
 
@@ -462,23 +464,22 @@ impl TryFrom<PgRow> for Table {
         let storage_path: String = row.try_get("storage_path")?;
         let storage_format: Option<String> = row.try_get("storage_format")?;
 
-        let share = Share::new(share_name, Some(share_id));
-        let schema = Schema::new(share, schema_name, Some(schema_id));
-        Ok(Table::new(
-            schema,
-            table_name,
-            Some(table_id),
-            storage_path,
-            storage_format,
-        ))
+        let share = ShareBuilder::new(share_name).id(share_id).build();
+        let schema = SchemaBuilder::new(share, schema_name).id(schema_id).build();
+        let table = TableBuilder::new(schema, table_name, storage_path)
+            .id(table_id)
+            .set_format(storage_format)
+            .build();
+
+        Ok(table)
     }
 }
 
 #[async_trait]
 impl ShareReader for PostgresShareReader {
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareReaderError> {
+    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareIoError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
+            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
         let shares = self.select_shares(&pg_cursor).await?;
 
         let next_page_token = if shares.len() == pg_cursor.limit() as usize {
@@ -494,10 +495,10 @@ impl ShareReader for PostgresShareReader {
         Ok(List::new(shares, next_page_token))
     }
 
-    async fn get_share(&self, share_name: &str) -> Result<Share, ShareReaderError> {
+    async fn get_share(&self, share_name: &str) -> Result<Share, ShareIoError> {
         self.select_share_by_name(share_name)
             .await?
-            .ok_or(ShareReaderError::ShareNotFound {
+            .ok_or(ShareIoError::ShareNotFound {
                 share_name: share_name.to_string(),
             })
     }
@@ -506,9 +507,9 @@ impl ShareReader for PostgresShareReader {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Schema>, ShareReaderError> {
+    ) -> Result<List<Schema>, ShareIoError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
+            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
         let schemas = self
             .select_schemas_by_share_name(share_name, &pg_cursor)
             .await?;
@@ -530,9 +531,9 @@ impl ShareReader for PostgresShareReader {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareReaderError> {
+    ) -> Result<List<Table>, ShareIoError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
+            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
         let next_page_token = if tables.len() == pg_cursor.limit() as usize {
@@ -553,9 +554,9 @@ impl ShareReader for PostgresShareReader {
         share_name: &str,
         schema_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareReaderError> {
+    ) -> Result<List<Table>, ShareIoError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareReaderError::MalformedContinuationToken)?;
+            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
         let tables = self
             .select_tables_by_schema(share_name, schema_name, &pg_cursor)
             .await?;
@@ -578,7 +579,7 @@ impl ShareReader for PostgresShareReader {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError> {
+    ) -> Result<Table, ShareIoError> {
         match self
             .select_table_by_name(share_name, schema_name, table_name)
             .await
@@ -588,14 +589,14 @@ impl ShareReader for PostgresShareReader {
                 let share = self.select_share_by_name(share_name).await?;
                 let schema = self.select_schema_by_name(share_name, schema_name).await?;
                 match (share, schema) {
-                    (None, _) => Err(ShareReaderError::ShareNotFound {
+                    (None, _) => Err(ShareIoError::ShareNotFound {
                         share_name: share_name.to_owned(),
                     }),
-                    (Some(_), None) => Err(ShareReaderError::SchemaNotFound {
+                    (Some(_), None) => Err(ShareIoError::SchemaNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                     }),
-                    (Some(_), Some(_)) => Err(ShareReaderError::TableNotFound {
+                    (Some(_), Some(_)) => Err(ShareIoError::TableNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                         table_name: table_name.to_owned(),
@@ -608,9 +609,9 @@ impl ShareReader for PostgresShareReader {
 }
 
 // TODO: Sort out Error handling and conversion
-impl From<sqlx::Error> for ShareReaderError {
+impl From<sqlx::Error> for ShareIoError {
     fn from(err: sqlx::Error) -> Self {
-        ShareReaderError::Other {
+        ShareIoError::Other {
             reason: err.to_string(),
         }
     }

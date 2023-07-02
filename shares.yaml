@@ -1,0 +1,33 @@
+shares:
+- name: "share1"
+  schemas:
+  - name: "schema1"
+    tables:
+    - name: "table1"
+      location: "s3a://<bucket-name>/<the-table-path>"
+      id: "00000000-0000-0000-0000-000000000000"
+    - name: "table2"
+      location: "wasbs://<container-name>@<account-name}.blob.core.windows.net/<the-table-path>"
+      id: "00000000-0000-0000-0000-000000000001"
+- name: "share2"
+  schemas:
+  - name: "schema2"
+    tables:
+    - name: "table3"
+      location: "abfss://<container-name>@<account-name}.dfs.core.windows.net/<the-table-path>"
+      cdfEnabled: true
+      id: "00000000-0000-0000-0000-000000000002"
+- name: "share3"
+  schemas:
+  - name: "schema3"
+    tables:
+    - name: "table4"
+      location: "gs://<bucket-name>/<the-table-path>"
+      id: "00000000-0000-0000-0000-000000000003"
+- name: "share4"
+  schemas:
+    - name: "schema4"
+      tables:
+        - name: "table5"
+          location: "s3a://<bucket-name>/<the-table-path>"
+          id: "00000000-0000-0000-0000-000000000004"

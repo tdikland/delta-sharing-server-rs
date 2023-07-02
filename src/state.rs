@@ -204,10 +204,10 @@ impl SharingServerState {
 mod test {
     use super::*;
     use crate::{
-        manager::{MockShareReader, ShareReaderError},
+        manager::{MockShareReader, ShareIoError},
         protocol::{
             action::{File, MetadataBuilder, ProtocolBuilder},
-            securable::{Schema, Share, Table},
+            securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
             share::List,
             table::{
                 SignedDataFile, SignedTableData, TableMetadata, UnsignedDataFile, UnsignedTableData,
@@ -227,14 +227,16 @@ mod test {
             .once()
             .returning(|_| {
                 let mut shares = List::new(vec![], Some("continuation_token".to_owned()));
-                shares.push(Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                ));
-                shares.push(Share::new(
-                    "sales_share".to_owned(),
-                    Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
-                ));
+                shares.push(
+                    ShareBuilder::new("vaccine_share")
+                        .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                        .build(),
+                );
+                shares.push(
+                    ShareBuilder::new("sales_share")
+                        .id("3e979c79-6399-4dac-bcf8-54e268f48515")
+                        .build(),
+                );
                 Ok(shares)
             });
 
@@ -251,10 +253,9 @@ mod test {
             .with(eq(ListCursor::new(None, None)))
             .returning(|_| {
                 let mut shares = List::new(vec![], Some("continuation_token".to_owned()));
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                );
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
                 shares.push(share);
                 Ok(shares)
             });
@@ -267,10 +268,11 @@ mod test {
             )))
             .returning(|_| {
                 let mut shares = List::new(vec![], None);
-                shares.push(Share::new(
-                    "sales_share".to_owned(),
-                    Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
-                ));
+                shares.push(
+                    ShareBuilder::new("sales_share")
+                        .id("3e979c79-6399-4dac-bcf8-54e268f48515")
+                        .build(),
+                );
                 Ok(shares)
             });
 
@@ -294,7 +296,7 @@ mod test {
         mock_table_manager
             .expect_list_shares()
             .once()
-            .returning(|_| Err(ShareReaderError::MalformedContinuationToken));
+            .returning(|_| Err(ShareIoError::MalformedContinuationToken));
 
         let state = SharingServerState::new(Arc::new(mock_table_manager));
         let response = state
@@ -312,10 +314,9 @@ mod test {
             .with(eq("vaccine_share"))
             .once()
             .returning(|_| {
-                Ok(Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                ))
+                Ok(ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build())
             });
 
         let state = SharingServerState::new(Arc::new(mock_table_manager));
@@ -331,7 +332,7 @@ mod test {
             .with(eq("vaccine_share"))
             .once()
             .returning(|_| {
-                Err(ShareReaderError::ShareNotFound {
+                Err(ShareIoError::ShareNotFound {
                     share_name: "vaccine_share".to_owned(),
                 })
             });
@@ -356,8 +357,8 @@ mod test {
             .once()
             .returning(|_, _| {
                 let mut schemas = List::new(vec![], Some("continuation_token".to_owned()));
-                let share = Share::new("vaccine_share".to_owned(), None);
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
+                let share = ShareBuilder::new("vaccine_share").build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
                 schemas.push(schema);
                 Ok(schemas)
             });
@@ -379,25 +380,28 @@ mod test {
             .once()
             .returning(|_, _| {
                 let mut tables = List::new(vec![], Some("next_page_token".to_owned()));
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
+                tables.push(
+                    TableBuilder::new(
+                        schema.clone(),
+                        "vaccine_ingredients",
+                        "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients",
+                    )
+                    .id("dcb1e680-7da4-4041-9be8-88aff508d001")
+                    .build(),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
-                tables.push(Table::new(
-                    schema.clone(),
-                    "vaccine_ingredients".to_owned(),
-                    Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
-                    None,
-                ));
-                tables.push(Table::new(
-                    schema,
-                    "vaccine_patients".to_owned(),
-                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
-                    None,
-                ));
+                tables.push(
+                    TableBuilder::new(
+                        schema.clone(),
+                        "vaccine_patients",
+                        "s3://vaccine_share/acme_vaccine_data/vaccine_patients",
+                    )
+                    .id("c48f3e19-2c29-4ea3-b6f7-3899e53338fa")
+                    .build(),
+                );
                 Ok(tables)
             });
 
@@ -422,25 +426,28 @@ mod test {
             .once()
             .returning(|_, _, _| {
                 let mut tables = List::new(vec![], Some("next_page_token".to_owned()));
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
+                tables.push(
+                    TableBuilder::new(
+                        schema.clone(),
+                        "vaccine_ingredients",
+                        "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients",
+                    )
+                    .id("dcb1e680-7da4-4041-9be8-88aff508d001")
+                    .build(),
                 );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
-                tables.push(Table::new(
-                    schema.clone(),
-                    "vaccine_ingredients".to_owned(),
-                    Some("dcb1e680-7da4-4041-9be8-88aff508d001".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_ingredients".to_owned(),
-                    None,
-                ));
-                tables.push(Table::new(
-                    schema,
-                    "vaccine_patients".to_owned(),
-                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
-                    None,
-                ));
+                tables.push(
+                    TableBuilder::new(
+                        schema.clone(),
+                        "vaccine_patients",
+                        "s3://vaccine_share/acme_vaccine_data/vaccine_patients",
+                    )
+                    .id("c48f3e19-2c29-4ea3-b6f7-3899e53338fa")
+                    .build(),
+                );
                 Ok(tables)
             });
 
@@ -464,18 +471,18 @@ mod test {
             )
             .once()
             .returning(|_, _, _| {
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
-                Ok(Table::new(
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
+                let table = TableBuilder::new(
                     schema,
-                    "vaccine_patients".to_owned(),
-                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
-                    Some("DELTA".to_owned()),
-                ))
+                    "vaccine_patients",
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients",
+                )
+                .id("c48f3e19-2c29-4ea3-b6f7-3899e53338fa")
+                .build();
+                Ok(table)
             });
 
         let mut mock_delta_reader = MockTableReader::new();
@@ -514,7 +521,7 @@ mod test {
                 eq("missing_table"),
             )
             .once()
-            .return_const(Err(ShareReaderError::TableNotFound {
+            .return_const(Err(ShareIoError::TableNotFound {
                 share_name: "vaccine_share".to_owned(),
                 schema_name: "acme_vaccine_data".to_owned(),
                 table_name: "missing_table".to_owned(),
@@ -550,7 +557,7 @@ mod test {
                 eq("vaccine_patients"),
             )
             .once()
-            .return_const(Err(ShareReaderError::Other {
+            .return_const(Err(ShareIoError::Other {
                 reason: "something went wrong internally".to_owned(),
             }));
 
@@ -580,18 +587,17 @@ mod test {
             )
             .once()
             .returning(|_, _, _| {
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
-                Ok(Table::new(
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
+                Ok(TableBuilder::new(
                     schema,
-                    "vaccine_patients".to_owned(),
-                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
+                    "vaccine_patients",
                     "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
-                    Some("DELTA".to_owned()),
-                ))
+                )
+                .id("c48f3e19-2c29-4ea3-b6f7-3899e53338fa")
+                .build())
             });
 
         let mut mock_delta_reader = MockTableReader::new();
