@@ -1,5 +1,5 @@
 use delta_sharing_server::{
-    manager::{ShareReader, ShareReaderError},
+    manager::{ShareIoError, ShareReader},
     protocol::share::ListCursor,
 };
 
@@ -95,7 +95,7 @@ async fn test_get_share<M: ShareReader>(manager: &M) {
     let non_existing_share = manager.get_share("absent").await.unwrap_err();
     assert_eq!(
         non_existing_share,
-        ShareReaderError::ShareNotFound {
+        ShareIoError::ShareNotFound {
             share_name: "absent".to_string()
         }
     );
@@ -285,6 +285,6 @@ async fn test_get_table<M: ShareReader>(manager: &M) {
         manager
             .get_table("share_1", "schema_1", "absent_table")
             .await,
-        Err(ShareReaderError::TableNotFound { .. })
+        Err(ShareIoError::TableNotFound { .. })
     ));
 }

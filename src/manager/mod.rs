@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display};
 
+pub mod file;
 pub mod dynamo;
 pub mod mysql;
 pub mod postgres;
@@ -21,10 +22,10 @@ pub trait ShareReader: Send + Sync {
     /// Fetch a list of shares stored on the sharing server store. The list
     /// cursor is used to limit the amount of returned shares and to resume
     /// listing from a specified point in the collection.
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareReaderError>;
+    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareIoError>;
 
     /// Get share details by name
-    async fn get_share(&self, share_name: &str) -> Result<Share, ShareReaderError>;
+    async fn get_share(&self, share_name: &str) -> Result<Share, ShareIoError>;
 
     /// Fetch a list of schemas stored on the sharing server store under a
     /// spcific share. The list cursor is used to limit the amount of returned
@@ -33,7 +34,7 @@ pub trait ShareReader: Send + Sync {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Schema>, ShareReaderError>;
+    ) -> Result<List<Schema>, ShareIoError>;
 
     /// Fetch a list of tables stored on the sharing server store under a
     /// spcific share combination. The list cursor is used to limit
@@ -43,7 +44,7 @@ pub trait ShareReader: Send + Sync {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareReaderError>;
+    ) -> Result<List<Table>, ShareIoError>;
 
     /// Fetch a list of tables stored on the sharing server store under a
     /// spcific share + schema combination. The list cursor is used to limit
@@ -54,7 +55,7 @@ pub trait ShareReader: Send + Sync {
         share_name: &str,
         schema_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareReaderError>;
+    ) -> Result<List<Table>, ShareIoError>;
 
     /// Get table specifics for a combination of share + schema + name.
     async fn get_table(
@@ -62,12 +63,27 @@ pub trait ShareReader: Send + Sync {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError>;
+    ) -> Result<Table, ShareIoError>;
+}
+
+/// Trait implemented by Share managers that each represent a different backing
+/// store for the shared objects.
+#[async_trait::async_trait]
+pub trait ShareWriter: Send + Sync {
+    /// Create a new share on the sharing server store.
+    async fn create_share(&self, share: &Share) -> Result<(), ShareIoError>;
+
+    /// Create a new schema on the sharing server store under a specific share.
+    async fn create_schema(&self, share_name: &str, schema: &Schema) -> Result<(), ShareIoError>;
+
+    /// Create a new table on the sharing server store under a specific share +
+    /// schema combination.
+    async fn create_table(&self, table: &Table) -> Result<(), ShareIoError>;
 }
 
 /// Errors that can occur during the listing and retrieval of shared objects.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ShareReaderError {
+pub enum ShareIoError {
     /// The requested share was not found in the backing store.
     ShareNotFound {
         /// The name of the share that could not be found.
@@ -100,13 +116,13 @@ pub enum ShareReaderError {
     },
 }
 
-impl Display for ShareReaderError {
+impl Display for ShareIoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ShareReaderError::ShareNotFound { share_name } => {
+            ShareIoError::ShareNotFound { share_name } => {
                 write!(f, "share `{}` could not be found", share_name)
             }
-            ShareReaderError::SchemaNotFound {
+            ShareIoError::SchemaNotFound {
                 share_name,
                 schema_name,
             } => write!(
@@ -114,7 +130,7 @@ impl Display for ShareReaderError {
                 "schema `{}.{}` could not be found",
                 share_name, schema_name
             ),
-            ShareReaderError::TableNotFound {
+            ShareIoError::TableNotFound {
                 share_name,
                 schema_name,
                 table_name,
@@ -123,15 +139,15 @@ impl Display for ShareReaderError {
                 "table `{}.{}.{}` could not be found",
                 share_name, schema_name, table_name
             ),
-            ShareReaderError::MalformedContinuationToken => {
+            ShareIoError::MalformedContinuationToken => {
                 write!(f, "the provided `page_token` is malformed")
             }
-            ShareReaderError::ConnectionError => {
+            ShareIoError::ConnectionError => {
                 write!(f, "could not connect with the share manager")
             }
-            ShareReaderError::Other { .. } => write!(f, "another error occurred"),
+            ShareIoError::Other { .. } => write!(f, "another error occurred"),
         }
     }
 }
 
-impl Error for ShareReaderError {}
+impl Error for ShareIoError {}

@@ -27,14 +27,8 @@ expression: response
         "file": {
           "url": "https://test-bucket.s3.eu-west-1.amazonaws.com/file1?signature=123",
           "id": "8b0086f2-7b27-4935-ac5a-8ed6215a6640",
-          "partitionValues": {
-            "date": "2021-04-28"
-          },
-          "size": 573,
-          "stats": "{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}",
-          "version": null,
-          "timestamp": null,
-          "expirationTimestamp": null
+          "partitionValues": {},
+          "size": 0
         }
       }
     },
@@ -43,14 +37,8 @@ expression: response
         "file": {
           "url": "https://test-bucket.s3.eu-west-1.amazonaws.com/file2?signature=123",
           "id": "591723a8-6a27-4240-a90e-57426f4736d2",
-          "partitionValues": {
-            "date": "2021-04-28"
-          },
-          "size": 573,
-          "stats": "{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}",
-          "version": null,
-          "timestamp": null,
-          "expirationTimestamp": null
+          "partitionValues": {},
+          "size": 0
         }
       }
     }

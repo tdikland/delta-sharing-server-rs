@@ -3,7 +3,7 @@
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
-use crate::{manager::ShareReaderError, reader::TableReaderError};
+use crate::{manager::ShareIoError, reader::TableReaderError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerError {
@@ -51,20 +51,18 @@ impl ServerError {
 
 pub type Result<T> = core::result::Result<T, ServerError>;
 
-impl From<ShareReaderError> for ServerError {
-    fn from(value: ShareReaderError) -> Self {
+impl From<ShareIoError> for ServerError {
+    fn from(value: ShareIoError) -> Self {
         match value {
-            ShareReaderError::TableNotFound {
+            ShareIoError::TableNotFound {
                 share_name,
                 schema_name,
                 table_name,
             } => Self::TableNotFound {
                 name: format!("{}.{}.{}", share_name, schema_name, table_name),
             },
-            ShareReaderError::ShareNotFound { share_name } => {
-                Self::ShareNotFound { name: share_name }
-            }
-            ShareReaderError::MalformedContinuationToken => ServerError::MalformedNextPageToken,
+            ShareIoError::ShareNotFound { share_name } => Self::ShareNotFound { name: share_name },
+            ShareIoError::MalformedContinuationToken => ServerError::MalformedNextPageToken,
             // TableManagerError::InternalError => Self::ShareStore,
             // TableManagerError::Other => Self::Other,
             // TableManagerError::MalformedListCursor => Self::InvalidPagination {

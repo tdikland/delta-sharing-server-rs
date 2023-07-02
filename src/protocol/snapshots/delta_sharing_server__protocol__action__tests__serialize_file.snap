@@ -8,7 +8,7 @@ expression: file
   "partitionValues": {
     "date": "2021-04-28"
   },
-  "size": 573,
+  "size": 0,
   "stats": "{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}",
   "expirationTimestamp": "1652140800000"
 }
