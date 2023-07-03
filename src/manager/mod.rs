@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display};
 
-pub mod file;
+// pub mod file;
 pub mod dynamo;
 pub mod mysql;
 pub mod postgres;
