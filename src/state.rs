@@ -207,7 +207,7 @@ mod test {
         manager::{MockShareReader, ShareIoError},
         protocol::{
             action::{FileBuilder, MetadataBuilder, ProtocolBuilder},
-            securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
+            securable::{SchemaBuilder, ShareBuilder, TableBuilder},
             share::List,
             table::{SignedDataFile, SignedTableData, TableMetadata, UnsignedTableData},
         },

@@ -453,27 +453,32 @@ impl AddBuilder {
         }
     }
 
+    /// Set the partition values for this file.
     pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
         self.partition_values = partition_values;
         self
     }
 
+    /// Add a partition value for this file.
     pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
         self.partition_values
             .insert(partition.into(), value.map(Into::into));
         self
     }
 
+    /// Set file level statistics for this file.
     pub fn stats(mut self, stats: impl Into<String>) -> Self {
         self.stats = Some(stats.into());
         self
     }
 
+    /// Expiration timestamp for the url associated with this file.
     pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
         self.expiration_timestamp = Some(ts.into());
         self
     }
 
+    /// Build an Add from the provided configuration.
     pub fn build(self) -> Add {
         Add {
             url: self.url,
@@ -512,6 +517,7 @@ pub struct Cdf {
     pub expiration_timestamp: Option<String>,
 }
 
+/// Initialize a new CdfBuilder.
 pub struct CdfBuilder {
     url: String,
     id: String,
@@ -524,6 +530,7 @@ pub struct CdfBuilder {
 }
 
 impl CdfBuilder {
+    /// Initialize a new CdfBuilder.
     pub fn new<S: Into<String>>(url: S, id: S, size: u64, version: u64, timestamp: S) -> Self {
         Self {
             url: url.into(),
@@ -537,27 +544,32 @@ impl CdfBuilder {
         }
     }
 
+    /// Set the partition values for this file.
     pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
         self.partition_values = partition_values;
         self
     }
 
+    /// Add a partition value for this file.
     pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
         self.partition_values
             .insert(partition.into(), value.map(Into::into));
         self
     }
 
+    /// Set file level statistics for this file.
     pub fn stats(mut self, stats: impl Into<String>) -> Self {
         self.stats = Some(stats.into());
         self
     }
 
+    /// Expiration timestamp for the url associated with this file.
     pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
         self.expiration_timestamp = Some(ts.into());
         self
     }
 
+    /// Build a Cdf from the provided configuration.
     pub fn build(self) -> Cdf {
         Cdf {
             url: self.url,
@@ -609,6 +621,7 @@ pub struct RemoveBuilder {
 }
 
 impl RemoveBuilder {
+    /// Initialize a new RemoveBuilder.
     pub fn new<S: Into<String>>(url: S, id: S, size: u64) -> Self {
         Self {
             url: url.into(),
@@ -622,27 +635,32 @@ impl RemoveBuilder {
         }
     }
 
+    /// Set the partition values for this file.
     pub fn partition_values(mut self, partition_values: HashMap<String, Option<String>>) -> Self {
         self.partition_values = partition_values;
         self
     }
 
+    /// Add a partition value for this file.
     pub fn add_partition_value<S: Into<String>>(mut self, partition: S, value: Option<S>) -> Self {
         self.partition_values
             .insert(partition.into(), value.map(Into::into));
         self
     }
 
+    /// Set file level statistics for this file.
     pub fn stats(mut self, stats: impl Into<String>) -> Self {
         self.stats = Some(stats.into());
         self
     }
 
+    /// Expiration timestamp for the url associated with this file.
     pub fn expiration_timestamp(mut self, ts: impl Into<String>) -> Self {
         self.expiration_timestamp = Some(ts.into());
         self
     }
 
+    /// Build a Remove from the provided configuration.
     pub fn build(self) -> Remove {
         Remove {
             url: self.url,
