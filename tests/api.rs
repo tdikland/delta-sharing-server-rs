@@ -136,6 +136,8 @@ async fn get_table_version_latest_success() {
         .send()
         .await;
 
+    dbg!(&response);
+
     response.assert_status_ok();
     response.assert_header_table_version(2);
     assert_snapshot!(response.text().await);

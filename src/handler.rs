@@ -36,12 +36,7 @@ pub async fn list_schemas(
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListSchemasResponse> {
-    let list_schemas = state
-        .table_manager()
-        .list_schemas(&share_name, &pagination)
-        .await?;
-    let response = ListSchemasResponse::from(list_schemas);
-    Ok(response)
+    state.list_schemas(&share_name, &pagination).await
 }
 
 #[debug_handler]
@@ -50,12 +45,7 @@ pub async fn list_tables_in_share(
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
-    let list_tables = state
-        .table_manager()
-        .list_tables_in_share(&share_name, &pagination)
-        .await?;
-    let response = ListTablesResponse::from(list_tables);
-    Ok(response)
+    state.list_tables_in_share(&share_name, &pagination).await
 }
 
 #[debug_handler]
@@ -64,40 +54,20 @@ pub async fn list_tables_in_schema(
     Path((share_name, schema_name)): Path<(String, String)>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
-    let list_tables = state
-        .table_manager()
+    state
         .list_tables_in_schema(&share_name, &schema_name, &pagination)
-        .await?;
-    let response = ListTablesResponse::from(list_tables);
-    Ok(response)
+        .await
 }
 
 #[debug_handler]
 pub async fn get_table_version(
     state: State<Arc<SharingServerState>>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
-    version: TableVersion,
+    tv: TableVersion,
 ) -> Result<TableVersionResponse> {
-    let table = state
-        .table_manager()
-        .get_table(&share_name, &schema_name, &table_name)
-        .await?;
-
-    let version = match version {
-        TableVersion::Timestamp(ts) => Version::Timestamp(ts),
-        TableVersion::Latest => Version::Latest,
-    };
-
-    let table_version = state
-        .table_reader("DELTA")
-        .ok_or(ServerError::UnsupportedTableFormat {
-            format: table.format().to_owned(),
-        })?
-        .get_table_version(table.storage_path(), version)
-        .await?;
-
-    let response = TableVersionResponse::from(table_version);
-    Ok(response)
+    state
+        .get_table_version(&share_name, &schema_name, &table_name, tv.into_version())
+        .await
 }
 
 #[debug_handler]
@@ -105,21 +75,9 @@ pub async fn get_table_metadata(
     State(state): State<Arc<SharingServerState>>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> Result<TableInfoResponse> {
-    let table = state
-        .table_manager()
-        .get_table(&share_name, &schema_name, &table_name)
-        .await?;
-
-    let table_metadata = state
-        .table_reader("DELTA")
-        .ok_or(ServerError::UnsupportedTableFormat {
-            format: table.format().to_owned(),
-        })?
-        .get_table_metadata(table.storage_path())
-        .await?;
-
-    let response = TableInfoResponse::from(table_metadata);
-    Ok(response)
+    state
+        .get_table_metadata(&share_name, &schema_name, &table_name)
+        .await
 }
 
 #[debug_handler]
@@ -128,29 +86,9 @@ pub async fn get_table_data(
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     _predicates: TableDataPredicates,
 ) -> Result<TableInfoResponse> {
-    let table = state
-        .table_manager()
-        .get_table(&share_name, &schema_name, &table_name)
-        .await?;
-
-    let table_data = state
-        .table_reader(table.format())
-        .ok_or(ServerError::UnsupportedTableFormat {
-            format: table.format().to_owned(),
-        })?
-        .get_table_data(table.storage_path(), 0, None, None)
-        .await?;
-
-    let signer = state
-        .url_signer("S3")
-        .ok_or(ServerError::UnsupportedTableStorage {
-            storage: String::from("S3"),
-        })?;
-
-    let signed_table_data = signer.sign_table_data(table_data).await;
-
-    let response = TableInfoResponse::from(signed_table_data);
-    Ok(response)
+    state
+        .get_table_data(&share_name, &schema_name, &table_name, Version::Latest)
+        .await
 }
 
 #[debug_handler]
@@ -159,5 +97,7 @@ pub async fn get_table_changes(
     Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
     _version_range: TableChangePredicates,
 ) -> Result<TableInfoResponse> {
-    Err(ServerError::UnsupportedOperation { reason: String::from("The `table_changes` endpoint is not yet implemented.") })
+    Err(ServerError::UnsupportedOperation {
+        reason: String::from("The `table_changes` endpoint is not yet implemented."),
+    })
 }

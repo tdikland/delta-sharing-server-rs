@@ -5,7 +5,10 @@ use axum::{extract::FromRequestParts, http::request::Parts, Json};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{error::ServerError, protocol::share::ListCursor};
+use crate::{
+    error::ServerError,
+    protocol::{share::ListCursor, table::Version},
+};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Pagination(pub ListCursor);
@@ -40,6 +43,15 @@ impl Deref for Pagination {
 pub enum TableVersion {
     Latest,
     Timestamp(DateTime<Utc>),
+}
+
+impl TableVersion {
+    pub fn into_version(self) -> Version {
+        match self {
+            Self::Latest => Version::Latest,
+            Self::Timestamp(ts) => Version::Timestamp(ts),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

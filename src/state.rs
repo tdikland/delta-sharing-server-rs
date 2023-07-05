@@ -304,7 +304,7 @@ mod test {
         assert_eq!(
             response.unwrap_err(),
             ServerError::InvalidPaginationToken {
-                reason: String::from("")
+                reason: String::from("the provided `page_token` is malformed")
             }
         );
     }
