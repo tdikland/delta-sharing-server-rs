@@ -301,7 +301,12 @@ mod test {
             .list_shares(&ListCursor::new(None, Some("invalid_token".to_owned())))
             .await;
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err(), ServerError::MalformedNextPageToken);
+        assert_eq!(
+            response.unwrap_err(),
+            ServerError::InvalidPaginationToken {
+                reason: String::from("")
+            }
+        );
     }
 
     #[tokio::test]
@@ -570,7 +575,12 @@ mod test {
             )
             .await;
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err(), ServerError::Other)
+        assert_eq!(
+            response.unwrap_err(),
+            ServerError::ShareManagerError {
+                reason: String::from("something went wrong internally")
+            }
+        )
     }
 
     #[tokio::test]

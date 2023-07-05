@@ -19,10 +19,11 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let value =
-            serde_urlencoded::from_str(query).map_err(|e| ServerError::InvalidPagination {
+        let value = serde_urlencoded::from_str(query).map_err(|e| {
+            ServerError::InvalidPaginationParameters {
                 reason: e.to_string(),
-            })?;
+            }
+        })?;
         Ok(Self(value))
     }
 }
@@ -207,7 +208,7 @@ mod tests {
     #[tokio::test]
     async fn reject_invalid_pagination() {
         // Invalid datatype for maxResults -> should be number
-        let exp = ServerError::InvalidPagination {
+        let exp = ServerError::InvalidPaginationParameters {
             reason: "invalid digit found in string".to_owned(),
         };
         check_pagination_err("/test?maxResults=aaa", exp).await;
