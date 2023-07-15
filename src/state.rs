@@ -644,18 +644,17 @@ mod test {
             )
             .once()
             .returning(|_, _, _| {
-                let share = Share::new(
-                    "vaccine_share".to_owned(),
-                    Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-                );
-                let schema = Schema::new(share, "acme_vaccine_data".to_owned(), None);
-                Ok(Table::new(
+                let share = ShareBuilder::new("vaccine_share")
+                    .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                    .build();
+                let schema = SchemaBuilder::new(share, "acme_vaccine_data").build();
+                Ok(TableBuilder::new(
                     schema,
-                    "vaccine_patients".to_owned(),
-                    Some("c48f3e19-2c29-4ea3-b6f7-3899e53338fa".to_owned()),
-                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients".to_owned(),
-                    Some("DELTA".to_owned()),
-                ))
+                    "vaccine_patients",
+                    "s3://vaccine_share/acme_vaccine_data/vaccine_patients",
+                )
+                .id("c48f3e19-2c29-4ea3-b6f7-3899e53338fa")
+                .build())
             });
 
         let table_metadata = MetadataBuilder::new("f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2", "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}").partition_columns(vec!["date".to_owned()]).build();
