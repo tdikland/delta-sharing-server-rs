@@ -3,13 +3,16 @@
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
-use crate::{manager::ShareIoError, reader::TableReaderError};
+use crate::{catalog::CatalogError, reader::TableReaderError};
+
+pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerError {
     // input validation errors
     InvalidPaginationParameters { reason: String },
     InvalidTableVersion,
+    InvalidCapabilitiesHeader,
     InvalidTableDataPredicates,
     InvalidTableChangePredicates,
     InvalidTableStartingTimestamp,
@@ -51,6 +54,7 @@ impl ServerError {
                 error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
                 message: format!("table `{}` not found", name),
             },
+
             ServerError::ShareManagerError { .. } => ErrorResponse {
                 error_code: String::from("INTERNAL_ERROR"),
                 message: String::new(),
@@ -66,32 +70,32 @@ impl ServerError {
 
 pub type Result<T> = core::result::Result<T, ServerError>;
 
-impl From<ShareIoError> for ServerError {
-    fn from(value: ShareIoError) -> Self {
+impl From<CatalogError> for ServerError {
+    fn from(value: CatalogError) -> Self {
         match value {
-            ShareIoError::MalformedContinuationToken => ServerError::InvalidPaginationToken {
+            CatalogError::MalformedContinuationToken => ServerError::InvalidPaginationToken {
                 reason: value.to_string(),
             },
-            ShareIoError::ShareNotFound { share_name } => {
+            CatalogError::ShareNotFound { share_name } => {
                 ServerError::ShareNotFound { name: share_name }
             }
-            ShareIoError::SchemaNotFound {
+            CatalogError::SchemaNotFound {
                 share_name,
                 schema_name,
             } => ServerError::TableNotFound {
                 name: format!("{}.{}", share_name, schema_name),
             },
-            ShareIoError::TableNotFound {
+            CatalogError::TableNotFound {
                 share_name,
                 schema_name,
                 table_name,
             } => Self::TableNotFound {
                 name: format!("{}.{}.{}", share_name, schema_name, table_name),
             },
-            ShareIoError::ConnectionError => ServerError::ShareManagerError {
+            CatalogError::ConnectionError => ServerError::ShareManagerError {
                 reason: String::new(),
             },
-            ShareIoError::Other { reason } => ServerError::ShareManagerError { reason },
+            CatalogError::Other { reason } => ServerError::ShareManagerError { reason },
         }
     }
 }

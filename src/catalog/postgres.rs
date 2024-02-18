@@ -9,7 +9,12 @@ use uuid::Uuid;
 
 use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
 
-use super::{List, ListCursor, ShareIoError, ShareReader};
+use super::{Catalog, CatalogError, List, ListCursor};
+
+/// Share -> Schema -> Table
+/// Permissions
+/// User 
+
 
 /// ShareReader implementation leveraging Postgres as backing store.
 #[derive(Debug)]
@@ -476,10 +481,10 @@ impl TryFrom<PgRow> for Table {
 }
 
 #[async_trait]
-impl ShareReader for PostgresShareReader {
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, ShareIoError> {
+impl Catalog for PostgresShareReader {
+    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let shares = self.select_shares(&pg_cursor).await?;
 
         let next_page_token = if shares.len() == pg_cursor.limit() as usize {
@@ -495,10 +500,10 @@ impl ShareReader for PostgresShareReader {
         Ok(List::new(shares, next_page_token))
     }
 
-    async fn get_share(&self, share_name: &str) -> Result<Share, ShareIoError> {
+    async fn get_share(&self, share_name: &str) -> Result<Share, CatalogError> {
         self.select_share_by_name(share_name)
             .await?
-            .ok_or(ShareIoError::ShareNotFound {
+            .ok_or(CatalogError::ShareNotFound {
                 share_name: share_name.to_string(),
             })
     }
@@ -507,9 +512,9 @@ impl ShareReader for PostgresShareReader {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Schema>, ShareIoError> {
+    ) -> Result<List<Schema>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let schemas = self
             .select_schemas_by_share_name(share_name, &pg_cursor)
             .await?;
@@ -531,9 +536,9 @@ impl ShareReader for PostgresShareReader {
         &self,
         share_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareIoError> {
+    ) -> Result<List<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
 
         let next_page_token = if tables.len() == pg_cursor.limit() as usize {
@@ -554,9 +559,9 @@ impl ShareReader for PostgresShareReader {
         share_name: &str,
         schema_name: &str,
         cursor: &ListCursor,
-    ) -> Result<List<Table>, ShareIoError> {
+    ) -> Result<List<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| ShareIoError::MalformedContinuationToken)?;
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let tables = self
             .select_tables_by_schema(share_name, schema_name, &pg_cursor)
             .await?;
@@ -579,7 +584,7 @@ impl ShareReader for PostgresShareReader {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareIoError> {
+    ) -> Result<Table, CatalogError> {
         match self
             .select_table_by_name(share_name, schema_name, table_name)
             .await
@@ -589,14 +594,14 @@ impl ShareReader for PostgresShareReader {
                 let share = self.select_share_by_name(share_name).await?;
                 let schema = self.select_schema_by_name(share_name, schema_name).await?;
                 match (share, schema) {
-                    (None, _) => Err(ShareIoError::ShareNotFound {
+                    (None, _) => Err(CatalogError::ShareNotFound {
                         share_name: share_name.to_owned(),
                     }),
-                    (Some(_), None) => Err(ShareIoError::SchemaNotFound {
+                    (Some(_), None) => Err(CatalogError::SchemaNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                     }),
-                    (Some(_), Some(_)) => Err(ShareIoError::TableNotFound {
+                    (Some(_), Some(_)) => Err(CatalogError::TableNotFound {
                         share_name: share_name.to_owned(),
                         schema_name: schema_name.to_owned(),
                         table_name: table_name.to_owned(),
@@ -609,9 +614,9 @@ impl ShareReader for PostgresShareReader {
 }
 
 // TODO: Sort out Error handling and conversion
-impl From<sqlx::Error> for ShareIoError {
+impl From<sqlx::Error> for CatalogError {
     fn from(err: sqlx::Error) -> Self {
-        ShareIoError::Other {
+        CatalogError::Other {
             reason: err.to_string(),
         }
     }

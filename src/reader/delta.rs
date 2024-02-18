@@ -2,11 +2,9 @@ use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
 use crate::protocol::action::{FileBuilder, MetadataBuilder, ProtocolBuilder};
-use crate::protocol::table::{
-    TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
-};
+use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData, VersionRange};
 
-use super::{TableReader, TableReaderError};
+use super::{TableReader, TableReaderError, Version};
 
 /// TableReader implementation for the Delta Lake format.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,7 +25,7 @@ impl Default for DeltaTableReader {
 
 #[async_trait]
 impl TableReader for DeltaTableReader {
-    async fn get_table_version(
+    async fn get_table_version_number(
         &self,
         storage_path: &str,
         version: Version,
@@ -35,6 +33,11 @@ impl TableReader for DeltaTableReader {
         match version {
             Version::Latest => {
                 let delta_table = deltalake::open_table(storage_path).await?;
+                Ok(delta_table.version() as u64)
+            }
+            Version::Number(version) => {
+                let delta_table =
+                    deltalake::open_table_with_version(storage_path, version as i64).await?;
                 Ok(delta_table.version() as u64)
             }
             Version::Timestamp(ts) => {

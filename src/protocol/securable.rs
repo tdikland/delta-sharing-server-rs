@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 /// resources in a share. A share may contain multiple schemas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Share {
-    name: String,
-    id: Option<String>,
+    pub(crate) name: String,
+    pub(crate) id: Option<String>,
 }
 
 impl Share {

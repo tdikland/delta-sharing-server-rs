@@ -1,17 +1,9 @@
-use std::ops::Deref;
-
 use async_trait::async_trait;
-use axum::{extract::FromRequestParts, http::request::Parts, Json};
+use axum::{extract::FromRequestParts, http::request::Parts};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{
-    error::ServerError,
-    protocol::{share::ListCursor, table::Version},
-};
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct Pagination(pub ListCursor);
+use crate::{catalog::Pagination, error::ServerError, reader::Version};
 
 #[async_trait]
 impl<S> FromRequestParts<S> for Pagination
@@ -27,41 +19,18 @@ where
                 reason: e.to_string(),
             }
         })?;
-        Ok(Self(value))
+        Ok(value)
     }
 }
 
-impl Deref for Pagination {
-    type Target = ListCursor;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TableVersion {
-    Latest,
-    Timestamp(DateTime<Utc>),
-}
-
-impl TableVersion {
-    pub fn into_version(self) -> Version {
-        match self {
-            Self::Latest => Version::Latest,
-            Self::Timestamp(ts) => Version::Timestamp(ts),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct RawTableVersion {
+struct VersionQueryParams {
     starting_timestamp: Option<DateTime<Utc>>,
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for TableVersion
+impl<S> FromRequestParts<S> for Version
 where
     S: Send + Sync,
 {
@@ -69,12 +38,84 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let value = serde_urlencoded::from_str::<RawTableVersion>(query)
+        let value = serde_urlencoded::from_str::<VersionQueryParams>(query)
             .map_err(|_| ServerError::InvalidTableStartingTimestamp)?;
         match value.starting_timestamp {
-            Some(ts) => Ok(TableVersion::Timestamp(ts)),
-            None => Ok(TableVersion::Latest),
+            Some(ts) => Ok(Version::Timestamp(ts)),
+            None => Ok(Version::Latest),
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Capabilities {
+    response_format: String,
+    reader_features: Option<Vec<String>>,
+}
+
+impl Capabilities {
+    pub fn response_format(&self) -> &str {
+        &self.response_format
+    }
+
+    pub fn is_delta_format(&self) -> bool {
+        self.response_format() == "delta"
+    }
+
+    pub fn reader_features(&self) -> Option<&Vec<String>> {
+        self.reader_features.as_ref()
+    }
+
+    pub fn has_reader_feature(&self, feature: &str) -> bool {
+        self.reader_features()
+            .map(|features| features.contains(&feature.to_owned()))
+            .unwrap_or_default()
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for Capabilities
+where
+    S: Send + Sync,
+{
+    type Rejection = ServerError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let header = parts.headers.get("delta-sharing-capabilities");
+
+        if let Some(h) = header {
+            let value = h
+                .to_str()
+                .map_err(|_| ServerError::InvalidCapabilitiesHeader)?;
+            let mut response_format = None;
+            let mut reader_features = None;
+
+            for pair in value.split(';') {
+                let mut iter = pair.split('=');
+                let key = iter.next().unwrap();
+                let value = iter.next().unwrap_or_default();
+
+                match key {
+                    "responseformat" => response_format = Some(value.to_owned()),
+                    "readerfeatures" => {
+                        reader_features = Some(value.split(',').map(|s| s.to_owned()).collect())
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(response_format) = response_format {
+                return Ok(Capabilities {
+                    response_format,
+                    reader_features,
+                });
+            }
+        }
+
+        Ok(Capabilities {
+            response_format: "parquet".to_owned(),
+            reader_features: None,
+        })
     }
 }
 
@@ -87,8 +128,6 @@ pub struct TableDataParams {
     version: Option<i32>,
     json_predicate_hints: Option<String>,
 }
-
-pub type TableDataPredicates = Json<TableDataParams>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TableChangePredicates {
@@ -183,80 +222,145 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use super::*;
+    use axum::body::Body;
     use axum::extract::FromRequest;
     use axum::http::header::CONTENT_TYPE;
     use axum::http::Request;
+    use axum::Json;
     use chrono::TimeZone;
     use serde_json::json;
 
-    async fn check_pagination_ok(route: impl AsRef<str>, value: ListCursor) {
-        let uri = format!("http://example.com{}", route.as_ref());
-        let req = Request::builder().uri(&uri).body(()).unwrap();
-        assert_eq!(Pagination::from_request(req, &()).await.unwrap().0, value);
-    }
-
-    async fn check_pagination_err(route: impl AsRef<str>, err: ServerError) {
-        let uri = format!("http://example.com{}", route.as_ref());
-        let req = Request::builder().uri(&uri).body(()).unwrap();
-        assert_eq!(Pagination::from_request(req, &()).await.unwrap_err(), err);
-    }
-
     #[tokio::test]
     async fn extract_pagination() {
-        let exp = ListCursor::new(None, None);
-        check_pagination_ok("/test", exp).await;
+        let uri = "http://example.com/test";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap(),
+            Pagination::new(None, None)
+        );
 
-        let exp = ListCursor::new(Some(1), None);
-        check_pagination_ok("/test?maxResults=1", exp).await;
+        let uri = "http://example.com/test?maxResults=1";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap(),
+            Pagination::new(Some(1), None)
+        );
 
-        let exp = ListCursor::new(None, Some("abcd".to_owned()));
-        check_pagination_ok("/test?pageToken=abcd", exp).await;
+        let uri = "http://example.com/test?pageToken=abcd";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap(),
+            Pagination::new(None, Some("abcd".to_owned()))
+        );
 
-        let exp = ListCursor::new(Some(2), Some("efgh".to_owned()));
-        check_pagination_ok("/test?maxResults=2&pageToken=efgh", exp).await;
+        let uri = "http://example.com/test?maxResults=2&pageToken=efgh";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap(),
+            Pagination::new(Some(2), Some("efgh".to_owned()))
+        );
     }
 
     #[tokio::test]
-    async fn reject_invalid_pagination() {
+    async fn reject_pagination() {
         // Invalid datatype for maxResults -> should be number
-        let exp = ServerError::InvalidPaginationParameters {
-            reason: "invalid digit found in string".to_owned(),
-        };
-        check_pagination_err("/test?maxResults=aaa", exp).await;
+        let uri = "http://example.com/test?maxResults=aaa";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap_err(),
+            ServerError::InvalidPaginationParameters {
+                reason: "invalid digit found in string".to_owned(),
+            }
+        );
     }
 
     #[tokio::test]
-    async fn extract_table_starting_version() {
+    async fn extract_version() {
         let req = Request::builder()
             .uri("http://example.com/test")
-            .body(())
+            .body(Body::empty())
             .unwrap();
         assert_eq!(
-            TableVersion::from_request(req, &()).await.unwrap(),
-            TableVersion::Latest
+            Version::from_request(req, &()).await.unwrap(),
+            Version::Latest
         );
 
         let req = Request::builder()
-            .uri("http://example.com/test?startingTimestamp=2000-01-01T00:00:00Z")
-            .body(())
+            .uri("http://example.com/test?startingTimestamp=2022-01-01T00:00:00Z")
+            .body(Body::empty())
             .unwrap();
         assert_eq!(
-            TableVersion::from_request(req, &()).await.unwrap(),
-            TableVersion::Timestamp(Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap())
+            Version::from_request(req, &()).await.unwrap(),
+            Version::Timestamp(Utc.with_ymd_and_hms(2022, 1, 1, 0, 0, 0).unwrap())
         );
     }
 
     #[tokio::test]
-    async fn reject_invalid_table_starting_version() {
-        // Cannot parse timestamp
+    async fn reject_version() {
+        // Invalid type for startingTimestamp, should be in timestamp format
         let req = Request::builder()
             .uri("http://example.com/test?startingTimestamp=abc")
-            .body(())
+            .body(Body::empty())
             .unwrap();
         assert_eq!(
-            TableVersion::from_request(req, &()).await.unwrap_err(),
+            Version::from_request(req, &()).await.unwrap_err(),
             ServerError::InvalidTableStartingTimestamp
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_capabilities() {
+        // Default capabilities
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            Capabilities::from_request(req, &()).await.unwrap(),
+            Capabilities {
+                response_format: "parquet".to_owned(),
+                reader_features: None
+            }
+        );
+
+        // Custom parquet capabilities
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .header("delta-sharing-capabilities", "responseformat=parquet")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            Capabilities::from_request(req, &()).await.unwrap(),
+            Capabilities {
+                response_format: "parquet".to_owned(),
+                reader_features: None
+            }
+        );
+
+        // Custom delta capabilities
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .header(
+                "delta-sharing-capabilities",
+                "responseformat=delta;readerfeatures=deletionvectors,columnmapping",
+            )
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            Capabilities::from_request(req, &()).await.unwrap(),
+            Capabilities {
+                response_format: "delta".to_owned(),
+                reader_features: Some(vec![
+                    "deletionvectors".to_owned(),
+                    "columnmapping".to_owned()
+                ])
+            }
         );
     }
 
@@ -271,11 +375,11 @@ mod tests {
         let req = Request::builder()
             .uri("http://example.com/test")
             .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .body(serde_json::to_string(&params).unwrap())
+            .body(Body::from(serde_json::to_string(&params).unwrap()))
             .unwrap();
 
         assert_eq!(
-            TableDataPredicates::from_request(req, &())
+            Json::<TableDataParams>::from_request(req, &())
                 .await
                 .unwrap()
                 .deref(),
@@ -289,11 +393,11 @@ mod tests {
 
         let req = Request::builder()
             .uri("http://example.com/test?startingTimestamp=2000-01-01T00:00:00Z")
-            .body(())
+            .body(Body::empty())
             .unwrap();
         assert_eq!(
-            TableVersion::from_request(req, &()).await.unwrap(),
-            TableVersion::Timestamp(Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap())
+            Version::from_request(req, &()).await.unwrap(),
+            Version::Timestamp(Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap())
         );
     }
 
@@ -301,7 +405,7 @@ mod tests {
     async fn extract_table_change_params() {
         let req = Request::builder()
             .uri("http://example.com/test?startingVersion=0&endingVersion=2")
-            .body(())
+            .body(Body::empty())
             .unwrap();
 
         assert_eq!(
@@ -314,7 +418,7 @@ mod tests {
 
         let req = Request::builder()
         .uri("http://example.com/test?startingTimestamp=2000-01-01T00:00:00Z&endingTimestamp=2000-01-02T00:00:00Z")
-        .body(())
+        .body(Body::empty())
         .unwrap();
 
         assert_eq!(

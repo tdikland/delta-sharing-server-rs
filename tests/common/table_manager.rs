@@ -5,7 +5,7 @@ use aws_sdk_dynamodb::types::{
     ProjectionType, ProvisionedThroughput, ScalarAttributeType, TableStatus,
 };
 use delta_sharing_server::{
-    manager::{dynamo::DynamoShareReader, mysql::MySqlShareReader, postgres::PostgresShareReader},
+    catalog::{dynamo::DynamoShareReader, mysql::MySqlShareReader, postgres::PostgresShareReader},
     protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
 };
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};

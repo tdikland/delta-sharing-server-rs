@@ -3,13 +3,12 @@
 use std::{error::Error, fmt::Display};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
-use crate::protocol::table::{
-    TableMetadata, TableVersionNumber, UnsignedTableData, Version, VersionRange,
-};
+use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData};
 
 /// Table reader implementation for the Delta Lake format.
-pub mod delta;
+// pub mod delta;
 
 /// Trait for reading a specific table format from cloud storage.
 #[cfg_attr(test, mockall::automock)]
@@ -17,7 +16,7 @@ pub mod delta;
 pub trait TableReader: Send + Sync {
     /// Retrieve the table version number that corresponds to the version
     /// request.
-    async fn get_table_version(
+    async fn get_table_version_number(
         &self,
         storage_path: &str,
         version: Version,
@@ -52,6 +51,35 @@ pub trait TableReader: Send + Sync {
         storage_path: &str,
         range: VersionRange,
     ) -> Result<UnsignedTableData, TableReaderError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Version {
+    /// Latest table version.
+    Latest,
+    /// Table version number.
+    Number(u64),
+    /// Earliest table version after the specified timestamp.
+    Timestamp(DateTime<Utc>),
+}
+
+/// Requested range of table version.
+#[derive(Debug, Clone, Copy)]
+pub enum VersionRange {
+    /// Range of table versions represented by start and end version number.
+    Version {
+        /// First timestamp that must be returned in the range.
+        start: u64,
+        /// Last timestamp that must be returned in the range.
+        end: u64,
+    },
+    /// Range of table versions represented by start and end timestamp.
+    Timestamp {
+        /// First version must be the earliest after the start timestamp.
+        start: DateTime<Utc>,
+        /// Last version must be the earliest after the end timestamp.
+        end: DateTime<Utc>,
+    },
 }
 
 /// Error that occur during the reading of the table format.

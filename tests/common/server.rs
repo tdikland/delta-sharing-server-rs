@@ -7,7 +7,7 @@ use axum::http::{
 };
 use axum::Server;
 use bytes::Bytes;
-use delta_sharing_server::manager::dynamo::DynamoShareReader;
+use delta_sharing_server::catalog::dynamo::DynamoShareReader;
 use delta_sharing_server::reader::delta::DeltaTableReader;
 use delta_sharing_server::router::build_sharing_server_router;
 use delta_sharing_server::signer::s3::S3UrlSigner;

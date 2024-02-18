@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
 
-use super::{List, ListCursor, ShareIoError, ShareReader};
+use super::{Catalog, CatalogError, List, ListCursor};
 
 /// ASSUMPTION: the writer only uses transactions to guarantee the consistency of the
 /// shared securables (i.e. share -> schema -> table).
@@ -53,6 +53,25 @@ use super::{List, ListCursor, ShareIoError, ShareReader};
 /// 4. List all tables in a share
 /// 5. List all tables in a schema
 ///
+/// 
+/// | client_id | securable |
+/// | anonymous | SHARE#share1 | ...
+/// | anonymous | SCHEMA#share1.schema1 | ..
+/// | anonymous | TABLE#share1.schema1.table1 | ...
+/// 
+/// 1. list shares for client
+/// 2. list schemas for share for client
+/// 3. list tables for share for client
+/// 4. list tables for schema for client
+/// 5. get share for client
+/// 6. get table for client
+/// 
+/// 1. QUERY on PK = client_id AND SK begins_with(SHARE)
+/// 2. QUERY on PK = client_id AND SK begins_with(SCHEMA#share_name)
+/// 3. QUERY on PK = client_id AND SK begins_with(TABLE#share_name)
+/// 4. QUERY on PK = client_id AND SK begins_with(TABLE#share_name.schema_name)
+/// 5. GET on PK = client_id AND SK = SHARE#share_name
+/// 6. GET on PK = client_id AND SK = TABLE#share_name.schema_name.table_name 
 #[derive(Debug)]
 pub struct DynamoShareReader {
     client: Client,
@@ -601,15 +620,15 @@ impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
     }
 }
 
-impl From<DynamoError> for ShareIoError {
+impl From<DynamoError> for CatalogError {
     fn from(value: DynamoError) -> Self {
         println!("ENCOUNTERED ERROR!: {:?}", &value);
         match value {
-            DynamoError::InvalidListCursor => ShareIoError::MalformedContinuationToken,
+            DynamoError::InvalidListCursor => CatalogError::MalformedContinuationToken,
             DynamoError::ShareNotFound { share } => {
-                ShareIoError::ShareNotFound { share_name: share }
+                CatalogError::ShareNotFound { share_name: share }
             }
-            _ => ShareIoError::Other {
+            _ => CatalogError::Other {
                 reason: String::from(""),
             },
         }
@@ -617,12 +636,12 @@ impl From<DynamoError> for ShareIoError {
 }
 
 #[async_trait]
-impl ShareReader for DynamoShareReader {
-    async fn list_shares(&self, pagination: &ListCursor) -> Result<List<Share>, ShareIoError> {
+impl Catalog for DynamoShareReader {
+    async fn list_shares(&self, pagination: &ListCursor) -> Result<List<Share>, CatalogError> {
         self.query_shares(pagination).await.map_err(From::from)
     }
 
-    async fn get_share(&self, share_name: &str) -> Result<Share, ShareIoError> {
+    async fn get_share(&self, share_name: &str) -> Result<Share, CatalogError> {
         self.get_share(share_name).await.map_err(From::from)
     }
 
@@ -630,7 +649,7 @@ impl ShareReader for DynamoShareReader {
         &self,
         share_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Schema>, ShareIoError> {
+    ) -> Result<List<Schema>, CatalogError> {
         self.query_schemas(share_name, pagination)
             .await
             .map_err(From::from)
@@ -640,7 +659,7 @@ impl ShareReader for DynamoShareReader {
         &self,
         share_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Table>, ShareIoError> {
+    ) -> Result<List<Table>, CatalogError> {
         self.query_tables_in_share(share_name, pagination)
             .await
             .map_err(From::from)
@@ -651,7 +670,7 @@ impl ShareReader for DynamoShareReader {
         share_name: &str,
         schema_name: &str,
         pagination: &ListCursor,
-    ) -> Result<List<Table>, ShareIoError> {
+    ) -> Result<List<Table>, CatalogError> {
         self.query_tables_in_schema(share_name, schema_name, pagination)
             .await
             .map_err(From::from)
@@ -662,7 +681,7 @@ impl ShareReader for DynamoShareReader {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareIoError> {
+    ) -> Result<Table, CatalogError> {
         self.get_table(share_name, schema_name, table_name)
             .await
             .map_err(From::from)
