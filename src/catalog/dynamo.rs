@@ -460,8 +460,8 @@ impl TryFrom<&HashMap<String, AttributeValue>> for TableInfo {
         let schema_name = extract_from_item(item, "schema_name")?;
         let share_name = extract_from_item(item, "share_name")?;
         let storage_location = extract_from_item(item, "storage_location")?;
-        let id = extract_from_item_opt(item, "table_id");
-        let share_id = extract_from_item_opt(item, "share_id");
+        let _id = extract_from_item_opt(item, "table_id");
+        let _share_id = extract_from_item_opt(item, "share_id");
 
         Ok(Self::new(name, schema_name, share_name, storage_location))
     }

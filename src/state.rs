@@ -185,17 +185,11 @@ impl SharingServerState {
 mod test {
     use super::*;
     use crate::{
-        catalog::{Catalog, CatalogError, MockCatalog},
-        protocol::{
-            action::{FileBuilder, MetadataBuilder, ProtocolBuilder},
-            securable::{SchemaBuilder, ShareBuilder, TableBuilder},
-            table::{SignedDataFile, SignedTableData, TableMetadata, UnsignedTableData},
-        },
+        catalog::{Catalog, MockCatalog},
         reader::MockTableReader,
-        signer::MockUrlSigner,
     };
     use insta::assert_json_snapshot;
-    use mockall::predicate::eq;
+    
 
     #[tokio::test]
     async fn list_shares() {

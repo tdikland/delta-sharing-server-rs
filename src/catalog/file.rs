@@ -5,7 +5,7 @@
 
 use std::{
     fs::File,
-    path::{Path, PathBuf},
+    path::{PathBuf},
 };
 
 use serde::{Deserialize, Serialize};

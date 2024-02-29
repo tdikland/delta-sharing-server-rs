@@ -240,7 +240,7 @@ impl IntoResponse for TableActionsResponse {
     fn into_response(self) -> Response {
         let raw_stream =
             futures::stream::iter(self.lines.into_iter().map(Ok::<JsonWrapper, StreamError>));
-        let stream = raw_stream.map_err(Into::into).and_then(|value| async move {
+        let _stream = raw_stream.map_err(Into::into).and_then(|value| async move {
             let mut buf = BytesMut::new().writer();
             serde_json::to_writer(&mut buf, &value)?;
             buf.write_all(b"\n")?;
@@ -398,7 +398,7 @@ mod test {
     };
     use bytes::Bytes;
 
-    use crate::protocol::action::{MetadataBuilder, ProtocolBuilder};
+    
 
     use super::*;
 
