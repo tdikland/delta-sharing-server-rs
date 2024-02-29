@@ -1,5 +1,7 @@
 //! ShareReader implementation leveraging Postgres as backing store.
 
+use std::borrow::{Borrow, Cow};
+
 use async_trait::async_trait;
 use sqlx::{
     postgres::{PgPoolOptions, PgRow},
@@ -9,20 +11,19 @@ use uuid::Uuid;
 
 use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
 
-use super::{Catalog, CatalogError, List, ListCursor};
+use super::{Catalog, CatalogError, ShareInfo};
 
 /// Share -> Schema -> Table
 /// Permissions
-/// User 
+/// User
 
-
-/// ShareReader implementation leveraging Postgres as backing store.
+/// Catalog implementation backed by a Postgres database.
 #[derive(Debug)]
-pub struct PostgresShareReader {
+pub struct PostgresCatalog {
     pool: PgPool,
 }
 
-impl PostgresShareReader {
+impl PostgresCatalog {
     /// Create a new PostgresShareReader.
     pub async fn new(connection_url: &str) -> Self {
         let pool = PgPoolOptions::new()
@@ -45,18 +46,18 @@ impl PostgresShareReader {
     }
 
     /// Insert a new share into the database.
-    pub async fn insert_share(&self, share_name: &str) -> Result<Share, sqlx::Error> {
-        let share_id = Uuid::new_v4();
+    pub async fn insert_share(&self, share: ShareInfo) -> Result<(), sqlx::Error> {
+        let share_id = share
+            .id()
+            .map(|s| Cow::Borrowed(s))
+            .unwrap_or_else(|| Cow::Owned(Uuid::new_v4().to_string()));
         sqlx::query("INSERT INTO share (id, name) VALUES ($1, $2);")
             .bind(share_id)
-            .bind(share_name)
+            .bind(share.name())
             .execute(&self.pool)
             .await?;
 
-        let share = ShareBuilder::new(share_name)
-            .id(share_id.to_string())
-            .build();
-        Ok(share)
+        Ok(())
     }
 
     async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
@@ -481,7 +482,7 @@ impl TryFrom<PgRow> for Table {
 }
 
 #[async_trait]
-impl Catalog for PostgresShareReader {
+impl Catalog for PostgresCatalog {
     async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;

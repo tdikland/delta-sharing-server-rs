@@ -10,7 +10,7 @@ use aws_sdk_dynamodb::{
 };
 use delta_sharing_server::{
     auth::ClientId,
-    catalog::{ddb::DynamoCatalog, Pagination, ShareInfo},
+    catalog::{dynamo::DynamoCatalog, Pagination, ShareInfo},
 };
 
 pub async fn setup_dynamo() {

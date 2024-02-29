@@ -1,689 +1,746 @@
-//! A TableManager implementation leveraging AWS DynamoDB.
+//! DynamoDB based implementation of the Catalog trait
 
-use std::{collections::HashMap, fmt::Display};
-
+use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
+use crate::auth::ClientId;
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{
-    operation::query::{builders::QueryFluentBuilder, QueryOutput},
-    types::AttributeValue,
-    Client,
-};
+use aws_sdk_dynamodb::{types::AttributeValue, Client};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
+const DYNAMO_ATTRIBUTE_PK: &'static str = "PK";
+const DYNAMO_ATTRIBUTE_SK: &'static str = "SK";
+const DYNAMO_ATTRIBUTE_SHARE_ID: &'static str = "share_id";
+const DYNAMO_ATTRIBUTE_SHARE_NAME: &'static str = "share_name";
+const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &'static str = "schema_name";
+const DYNAMO_ATTRIBUTE_TABLE_ID: &'static str = "table_id";
+const DYNAMO_ATTRIBUTE_TABLE_NAME: &'static str = "table_name";
+const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &'static str = "table_storage_location";
 
-use super::{Catalog, CatalogError, List, ListCursor};
-
-/// ASSUMPTION: the writer only uses transactions to guarantee the consistency of the
-/// shared securables (i.e. share -> schema -> table).
+/// Catalog implementation backed by AWS DynamoDB
 ///
-/// | SHARE#ALL | share1 | ...
-/// | SHARE#ALL | share2 | ...
-/// | SHARE#share1 | schema1 | ...
-/// | SHARE#share1 | schema2 | ...
-/// | SHARE#share2 | schema1#table1 | ...
-
-/// TableManager using AWS DynamoDB to store shared objects.
+/// AWS DynamoDB is a fully managed NoSQL database service that provides fast
+/// and predictable performance with seamless scalability. It uses a schemaless
+/// design, which means that items in a table can have different attributes. In
+/// this implementation, we use a single table to store all the information
+/// related to shares, schemas, and tables. The table has a primary key (PK) and
+/// a sort key (SK). The PK is the client ID and the SK is a composite key that
+/// includes the type of the item (SHARE, SCHEMA, TABLE) and the name of the
+/// item.
 ///
-/// ## Table layout
-///
-/// | PK | SK | share_id | storage_path | table_id
-/// SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL | SHARE | share1_id
-/// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#ALL | SCHEMA |
-/// SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} | TABLE | share1_id | s3://my-data-bucket/my-table-root/ | table1_id
-///
-///  Key
-/// 1. KEY: PK+SK
-/// 2. GSI: SK+PK
-///
-/// Implemented query patterns
-/// 1. QUERY on GSI with SK = SHARE
-/// 2. GET on KEY with PK = SHARE#{share_name}#SCHEMA#ALL#TABLE#ALL
-/// 3. QUERY on GSI with SK = SCHEMA AND PK begins_with(SHARE#{share_name})
-/// 4. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name}#SCHEMA#{schema_name})
-/// 5. QUERY on GSI with type = TABLE and SK begins_with(SHARE#{share_name})
-/// 6. GET on KEY with PK = SHARE#{share_name}#SCHEMA#{schema_name}#TABLE#{table_name} AND SK = TABLE
-///
-/// ## Query patterns
-/// 1. Get a table by share_name, schema_name and table_name
-/// 2. Get a share by share_name
-/// 2. List all shares
-/// 3. List all schemas in a share
-/// 4. List all tables in a share
-/// 5. List all tables in a schema
-///
-/// 
-/// | client_id | securable |
-/// | anonymous | SHARE#share1 | ...
-/// | anonymous | SCHEMA#share1.schema1 | ..
-/// | anonymous | TABLE#share1.schema1.table1 | ...
-/// 
-/// 1. list shares for client
-/// 2. list schemas for share for client
-/// 3. list tables for share for client
-/// 4. list tables for schema for client
-/// 5. get share for client
-/// 6. get table for client
-/// 
-/// 1. QUERY on PK = client_id AND SK begins_with(SHARE)
-/// 2. QUERY on PK = client_id AND SK begins_with(SCHEMA#share_name)
-/// 3. QUERY on PK = client_id AND SK begins_with(TABLE#share_name)
-/// 4. QUERY on PK = client_id AND SK begins_with(TABLE#share_name.schema_name)
-/// 5. GET on PK = client_id AND SK = SHARE#share_name
-/// 6. GET on PK = client_id AND SK = TABLE#share_name.schema_name.table_name 
-#[derive(Debug)]
-pub struct DynamoShareReader {
+/// The DynamoDB table has the following schema:
+/// For every combination of client_id and securable (i.e. share, schema and table)
+/// there is a single item in the table. The item has the following attributes:
+/// - PK: The client ID
+/// - SK: The sort key (formatted as `<SECURABLE>#<fully_qualified_name>`)
+pub struct DynamoCatalog {
     client: Client,
     table_name: String,
-    index_name: String,
 }
 
-impl DynamoShareReader {
-    /// Create a new TableManager using the AWS DynamoDB client along with
-    /// table_name and GSI index name.
-    pub fn new(client: Client, table_name: String, index_name: String) -> Self {
+impl DynamoCatalog {
+    /// Create a new instance of the DynamoCatalog
+    pub fn new(client: Client, table_name: impl Into<String>) -> Self {
         Self {
             client,
-            table_name,
-            index_name,
+            table_name: table_name.into(),
         }
     }
 
-    /// Create a new DynamoDB table to store shares, schemas and tables.
-    pub fn create_table(&self) -> Result<(), DynamoError> {
-        todo!()
-    }
-
-    /// Retrieve underlying DynamoDB SDK client.
-    pub fn client(&self) -> &Client {
-        &self.client
-    }
-
-    /// Add a new share to the share store.
-    pub async fn put_share(&self, share: Share) -> Result<Share, DynamoError> {
-        let key = DynamoKey::from_share_name(share.name());
-        let mut req = self
+    /// Write a new share to the catalog
+    pub async fn put_share(&self, client_id: String, share: ShareInfo) -> Result<(), CatalogError> {
+        let mut builder = self
             .client
             .put_item()
             .table_name(&self.table_name)
-            .item("PK", key.partition_key())
-            .item("SK", key.sort_key());
+            .item(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id))
+            .item(
+                DYNAMO_ATTRIBUTE_SK,
+                AttributeValue::S(format!("SHARE#{}", share.name())),
+            )
+            .item(
+                DYNAMO_ATTRIBUTE_SHARE_NAME,
+                AttributeValue::S(share.name().to_owned()),
+            );
 
-        if let Some(id) = share.id() {
-            req = req.item("share_id", AttributeValue::S(id.to_owned()))
+        if let Some(share_id) = share.id() {
+            builder = builder.item(
+                DYNAMO_ATTRIBUTE_SHARE_ID,
+                AttributeValue::S(share_id.to_owned()),
+            );
         }
 
-        req.send().await.map_err(|e| DynamoError::ServiceError {
-            reason: e.to_string(),
+        let _result = builder.send().await.map_err(|e| {
+            CatalogError::internal(format!(
+                "write share to catalog failed; reason: `{}`",
+                e.to_string()
+            ))
         })?;
 
-        Ok(share)
+        Ok(())
     }
 
-    /// Retrieve a share from the share store.
-    pub async fn get_share(&self, share_name: &str) -> Result<Share, DynamoError> {
-        let key = DynamoKey::from_share_name(share_name);
-        self.get_securable(key).await.map_err(|e| match e {
-            DynamoError::SecurableNotFound => DynamoError::ShareNotFound {
-                share: share_name.to_string(),
-            },
-            e => e,
-        })
-    }
-
-    /// Retrieve a list of shares from the share store.
-    pub async fn query_shares(&self, cursor: &ListCursor) -> Result<List<Share>, DynamoError> {
-        let sk = "SHARE".to_owned();
-        let pk_prefix = "SHARE#".to_string();
-        self.query_securable(cursor, sk, pk_prefix).await
-    }
-
-    /// Add a new schema to the share store.
-    pub async fn put_schema(&self, schema: Schema) -> Result<Schema, DynamoError> {
-        let key = DynamoKey::from_schema_name(schema.share_name(), schema.name());
-        self.client
-            .put_item()
-            .table_name(&self.table_name)
-            .item("PK", key.partition_key())
-            .item("SK", key.sort_key())
-            .send()
-            .await
-            .map_err(|e| DynamoError::ServiceError {
-                reason: e.to_string(),
-            })?;
-
-        Ok(schema)
-    }
-
-    /// Retrieve a schema from the share store.
-    pub async fn get_schema(
+    /// Read a share from the catalog
+    pub async fn get_share(
         &self,
+        client_id: String,
         share_name: &str,
-        schema_name: &str,
-    ) -> Result<Schema, DynamoError> {
-        let key = DynamoKey::from_schema_name(share_name, schema_name);
-        self.get_securable(key).await
-    }
-
-    /// Retrieve a list of schemas from the share store.
-    pub async fn query_schemas(
-        &self,
-        share_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Schema>, DynamoError> {
-        let sk = "SCHEMA".to_owned();
-        let pk_prefix = format!("SHARE#{}", share_name);
-        self.query_securable(cursor, sk, pk_prefix).await
-    }
-
-    /// Add a new table to the share store.
-    pub async fn put_table(&self, table: Table) -> Result<Table, DynamoError> {
-        let key = DynamoKey::from_table_name(table.share_name(), table.schema_name(), table.name());
-        self.client
-            .put_item()
-            .table_name(&self.table_name)
-            .item("PK", key.partition_key())
-            .item("SK", key.sort_key())
-            .item(
-                "storage_path",
-                AttributeValue::S(table.storage_path().to_owned()),
-            )
-            .send()
-            .await
-            .map_err(|e| DynamoError::ServiceError {
-                reason: e.to_string(),
-            })?;
-
-        Ok(table)
-    }
-
-    /// Retrieve a table from the share store.
-    pub async fn get_table(
-        &self,
-        share_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<Table, DynamoError> {
-        let key = DynamoKey::from_table_name(share_name, schema_name, table_name);
-        self.get_securable(key).await
-    }
-
-    /// Retrieve a list of tables from the share store.
-    pub async fn query_tables_in_share(
-        &self,
-        share_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Table>, DynamoError> {
-        let sk = "TABLE".to_owned();
-        let pk_prefix = format!("SHARE#{}", share_name);
-        self.query_securable(cursor, sk, pk_prefix).await
-    }
-
-    /// Retrieve a list of tables from the share store.
-    pub async fn query_tables_in_schema(
-        &self,
-        share_name: &str,
-        schema_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Table>, DynamoError> {
-        let sk = "TABLE".to_owned();
-        let pk_prefix = format!("SHARE#{}#SCHEMA#{}", share_name, schema_name);
-        self.query_securable(cursor, sk, pk_prefix).await
-    }
-
-    async fn get_securable<
-        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
-    >(
-        &self,
-        key: DynamoKey,
-    ) -> Result<T, DynamoError> {
-        let get_item_output = self
+    ) -> Result<ShareInfo, CatalogError> {
+        let result = self
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key("PK", key.partition_key())
-            .key("SK", key.sort_key())
+            .key("PK", AttributeValue::S(client_id))
+            .key("SK", AttributeValue::S(format!("SHARE#{}", share_name)))
             .send()
             .await
-            .map_err(|e| DynamoError::ServiceError {
-                reason: e.to_string(),
+            .map_err(|e| {
+                println!("{e:?}");
+                CatalogError::internal(e.to_string())
             })?;
 
-        let securable = get_item_output
-            .item()
-            .ok_or(DynamoError::SecurableNotFound)
-            .and_then(TryInto::try_into)?;
-
-        Ok(securable)
+        if let Some(item) = result.item() {
+            Ok(item.try_into()?)
+        } else {
+            Err(CatalogError::share_not_found(share_name))
+        }
     }
 
-    async fn query_securable<T>(
+    /// List all shares in the catalog
+    pub async fn query_shares(
         &self,
-        cursor: &ListCursor,
-        sk: String,
-        pk_begins_with: String,
-    ) -> Result<List<T>, DynamoError>
-    where
-        T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
-    {
+        client_id: String,
+        pagination: &Pagination,
+    ) -> Result<Page<ShareInfo>, CatalogError> {
         let mut query = self
             .client
             .query()
             .table_name(&self.table_name)
-            .index_name(&self.index_name)
-            .expression_attribute_names("#SK", "SK")
             .expression_attribute_names("#PK", "PK")
-            .expression_attribute_values(":sk", AttributeValue::S(sk))
-            .expression_attribute_values(":pk", AttributeValue::S(pk_begins_with))
-            .key_condition_expression("#SK = :sk AND begins_with(#PK, :pk)");
-        query = with_cursor(query, cursor)?;
+            .expression_attribute_names("#SK", "SK")
+            .expression_attribute_values(":pk", AttributeValue::S(client_id))
+            .expression_attribute_values(":sk", AttributeValue::S("SHARE".to_owned()))
+            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
 
-        let query_output = query.send().await;
-        dbg!(&query_output);
-        let query_output = query_output.map_err(|e| DynamoError::ServiceError {
-            reason: e.to_string(),
-        })?;
-        let list_result = parse_query_output(query_output)?;
-        Ok(list_result)
-    }
-}
+        if let Some(max_results) = pagination.max_results() {
+            query = query.limit(max_results as i32);
+        }
 
-fn with_cursor(
-    mut query: QueryFluentBuilder,
-    cursor: &ListCursor,
-) -> Result<QueryFluentBuilder, DynamoError> {
-    if let Some(limit) = cursor.max_results() {
-        query = query.limit(limit as i32);
-    }
-    if let Some(token) = cursor.page_token() {
-        let cursor: DynamoCursor = token.try_into()?;
-        query = query.set_exclusive_start_key(Some(cursor.into_start_key()));
-    }
-    Ok(query)
-}
+        if let Some(token) = pagination.page_token() {
+            query = query.set_exclusive_start_key(Some(token_to_key(token)));
+        }
 
-fn parse_query_output<T>(output: QueryOutput) -> Result<List<T>, DynamoError>
-where
-    T: for<'a> TryFrom<&'a HashMap<String, AttributeValue>, Error = DynamoError>,
-{
-    if let Some(items) = output.items() {
-        let securables = items
-            .iter()
+        let result = query
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        let shares = result
+            .items()
+            .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<Vec<T>, _>>()?;
-        let token = output
-            .last_evaluated_key()
-            .map(|key| DynamoCursor::try_from(key).and_then(|c| c.into_token()))
-            .transpose()?;
-        Ok(List::new(securables, token))
-    } else {
-        Ok(List::new(vec![], None))
+            .collect::<Result<Vec<ShareInfo>, CatalogError>>()?;
+
+        Ok(Page::new(
+            shares,
+            result.last_evaluated_key().map(key_to_token),
+        ))
     }
-}
 
-/// Errors that can occur when interacting with the DynamoDB share store.
-#[derive(Debug)]
-pub enum DynamoError {
-    /// The ListCursor could not be interpreted as a DynamoCursor.
-    InvalidListCursor,
-    /// The DynamoCursor could not be interpreted as a ListCursor.
-    InvalidDynamoCursor,
-    /// The requested securable was not found.
-    SecurableNotFound,
-    /// The requested share was not found.
-    ShareNotFound {
-        /// The name of the share that was not found.
-        share: String,
-    },
-    /// The requested schema was not found.
-    SchemaNotFound {
-        /// The name of the share that was searched.
-        share: String,
-        /// The name of the schema that was not found.
-        schema: String,
-    },
-    /// The requested table was not found.
-    TableNotFound {
-        /// The name of the share that was searched.
-        share: String,
-        /// The name of the schema that was searched.
-        schema: String,
-        /// The name of the table that was not found.
-        table: String,
-    },
-    /// The requested share could not be parsed.
-    InvalidShareItem,
-    /// The requested schema could not be parsed.
-    InvalidSchemaItem,
-    /// The requested table could not be parsed.
-    InvalidTableItem,
-    /// An error occurred when interacting with the DynamoDB service.
-    ServiceError {
-        /// The reason for the error.
-        reason: String,
-    },
-    /// An unexpected error occurred.
-    Other,
-}
+    /// Write a new schema to the catalog
+    pub async fn put_schema(
+        &self,
+        client_id: String,
+        share_name: String,
+        schema: SchemaInfo,
+    ) -> Result<(), CatalogError> {
+        let builder = self
+            .client
+            .put_item()
+            .table_name(&self.table_name)
+            .item("PK", AttributeValue::S(client_id))
+            .item(
+                "SK",
+                AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema.name())),
+            )
+            .item("share_name", AttributeValue::S(share_name))
+            .item("name", AttributeValue::S(schema.name().to_owned()));
 
-enum Securable {
-    Share,
-    Schema,
-    Table,
-}
+        let _result = builder
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
 
-struct DynamoKey {
-    share_name: String,
-    schema_name: Option<String>,
-    table_name: Option<String>,
-    securable: Securable,
-}
+        Ok(())
+    }
 
-impl DynamoKey {
-    fn from_share_name(share_name: impl Into<String>) -> Self {
-        Self {
-            share_name: share_name.into(),
-            schema_name: None,
-            table_name: None,
-            securable: Securable::Share,
+    /// Read a schema from the catalog
+    pub async fn get_schema(
+        &self,
+        client_id: String,
+        share_name: String,
+        schema_name: String,
+    ) -> Result<SchemaInfo, CatalogError> {
+        let result = self
+            .client
+            .get_item()
+            .table_name(&self.table_name)
+            .key("PK", AttributeValue::S(client_id))
+            .key(
+                "SK",
+                AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema_name)),
+            )
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        if let Some(item) = result.item() {
+            Ok(item.try_into()?)
+        } else {
+            Err(CatalogError::schema_not_found(&share_name, &schema_name))
         }
     }
 
-    fn from_schema_name(share_name: impl Into<String>, schema_name: impl Into<String>) -> Self {
-        Self {
-            share_name: share_name.into(),
-            schema_name: Some(schema_name.into()),
-            table_name: None,
-            securable: Securable::Schema,
+    /// List all schemas in a share
+    pub async fn query_schemas(
+        &self,
+        client_id: String,
+        share_name: String,
+        pagination: &Pagination,
+    ) -> Result<Page<SchemaInfo>, CatalogError> {
+        let mut query = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .expression_attribute_names("#PK", "PK")
+            .expression_attribute_names("#SK", "SK")
+            .expression_attribute_values(":pk", AttributeValue::S(client_id))
+            .expression_attribute_values(
+                ":sk",
+                AttributeValue::S(format!("SCHEMA#{}.", share_name)),
+            )
+            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
+
+        if let Some(max_results) = pagination.max_results() {
+            query = query.limit(max_results as i32);
+        }
+
+        if let Some(token) = pagination.page_token() {
+            query = query.set_exclusive_start_key(Some(token_to_key(token)));
+        }
+
+        let result = query
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        let schemas = result
+            .items()
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<SchemaInfo>, CatalogError>>()?;
+
+        Ok(Page::new(
+            schemas,
+            result.last_evaluated_key().map(key_to_token),
+        ))
+    }
+
+    /// Write a new table to the catalog
+    pub async fn put_table(
+        &self,
+        client_id: String,
+        share_name: String,
+        schema_name: String,
+        table: TableInfo,
+    ) -> Result<(), CatalogError> {
+        let builder = self
+            .client
+            .put_item()
+            .table_name(&self.table_name)
+            .item("PK", AttributeValue::S(client_id))
+            .item(
+                "SK",
+                AttributeValue::S(format!(
+                    "TABLE#{}.{}.{}",
+                    share_name,
+                    schema_name,
+                    table.name()
+                )),
+            )
+            .item("name", AttributeValue::S(table.name().to_owned()));
+
+        let _result = builder
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Read a table from the catalog
+    pub async fn get_table(
+        &self,
+        client_id: String,
+        share_name: String,
+        schema_name: String,
+        table_name: String,
+    ) -> Result<TableInfo, CatalogError> {
+        let result = self
+            .client
+            .get_item()
+            .table_name(&self.table_name)
+            .key("PK", AttributeValue::S(client_id))
+            .key(
+                "SK",
+                AttributeValue::S(format!(
+                    "TABLE#{}.{}.{}",
+                    share_name, schema_name, table_name
+                )),
+            )
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        if let Some(item) = result.item() {
+            Ok(item.try_into()?)
+        } else {
+            Err(CatalogError::table_not_found(
+                &share_name,
+                &schema_name,
+                &table_name,
+            ))
         }
     }
 
-    fn from_table_name(
-        share_name: impl Into<String>,
-        schema_name: impl Into<String>,
-        table_name: impl Into<String>,
-    ) -> Self {
-        Self {
-            share_name: share_name.into(),
-            schema_name: Some(schema_name.into()),
-            table_name: Some(table_name.into()),
-            securable: Securable::Table,
+    /// List all tables in a share
+    pub async fn query_tables_in_share(
+        &self,
+        client_id: String,
+        share_name: String,
+        pagination: &Pagination,
+    ) -> Result<Page<TableInfo>, CatalogError> {
+        let mut query = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .expression_attribute_names("#PK", "PK")
+            .expression_attribute_names("#SK", "SK")
+            .expression_attribute_values(":pk", AttributeValue::S(client_id))
+            .expression_attribute_values(":sk", AttributeValue::S(format!("TABLE#{}.", share_name)))
+            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
+
+        if let Some(max_results) = pagination.max_results() {
+            query = query.limit(max_results as i32);
         }
-    }
 
-    fn partition_key(&self) -> AttributeValue {
-        let schema_name = self.schema_name.clone().unwrap_or("ALL".to_owned());
-        let table_name = self.table_name.clone().unwrap_or("ALL".to_owned());
-        let pk = format!(
-            "SHARE#{}#SCHEMA#{}#TABLE#{}",
-            self.share_name, schema_name, table_name
-        );
-        AttributeValue::S(pk)
-    }
-
-    fn sort_key(&self) -> AttributeValue {
-        match self.securable {
-            Securable::Share => AttributeValue::S("SHARE".to_owned()),
-            Securable::Schema => AttributeValue::S("SCHEMA".to_owned()),
-            Securable::Table => AttributeValue::S("TABLE".to_owned()),
+        if let Some(token) = pagination.page_token() {
+            query = query.set_exclusive_start_key(Some(token_to_key(token)));
         }
+
+        let result = query
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
+
+        let tables = result
+            .items()
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
+
+        Ok(Page::new(
+            tables,
+            result.last_evaluated_key().map(key_to_token),
+        ))
     }
 
-    fn share_name(&self) -> &str {
-        self.share_name.as_ref()
-    }
+    /// List all tables in a schema
+    pub async fn query_tables_in_schema(
+        &self,
+        client_id: String,
+        share_name: String,
+        schema_name: String,
+        pagination: &Pagination,
+    ) -> Result<Page<TableInfo>, CatalogError> {
+        let mut query = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .expression_attribute_names("#PK", "PK")
+            .expression_attribute_names("#SK", "SK")
+            .expression_attribute_values(":pk", AttributeValue::S(client_id))
+            .expression_attribute_values(
+                ":sk",
+                AttributeValue::S(format!("TABLE#{}.{}.", share_name, schema_name)),
+            )
+            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
 
-    fn schema_name(&self) -> Option<&String> {
-        self.schema_name.as_ref()
-    }
-
-    fn table_name(&self) -> Option<&String> {
-        self.table_name.as_ref()
-    }
-}
-
-impl Display for DynamoKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (&self.schema_name, &self.table_name) {
-            (None, None) => write!(f, "{}", self.share_name),
-            (None, Some(_)) => Err(std::fmt::Error),
-            (Some(schema_name), None) => write!(f, "{}.{}", self.share_name, schema_name),
-            (Some(schema_name), Some(table_name)) => {
-                write!(f, "{}.{}.{}", self.share_name, schema_name, table_name)
-            }
+        if let Some(max_results) = pagination.max_results() {
+            query = query.limit(max_results as i32);
         }
-    }
-}
 
-impl TryFrom<&HashMap<String, AttributeValue>> for DynamoKey {
-    type Error = DynamoError;
-
-    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let pk_parts = item
-            .get("PK")
-            .ok_or(DynamoError::InvalidShareItem)?
-            .as_s()
-            .map_err(|_| DynamoError::InvalidShareItem)?
-            .split('#')
-            .collect::<Vec<_>>();
-
-        // Primary key validation
-        // TODO: make this better!
-        if pk_parts.len() != 6 {
-            return Err(DynamoError::InvalidShareItem);
+        if let Some(token) = pagination.page_token() {
+            query = query.set_exclusive_start_key(Some(token_to_key(token)));
         }
-        let share_name = pk_parts[1].to_owned();
-        let schema_name = pk_parts[3].to_owned();
-        let table_name = pk_parts[5].to_owned();
-        let entity = item
-            .get("SK")
-            .ok_or(DynamoError::InvalidShareItem)?
-            .as_s()
-            .map_err(|_| DynamoError::InvalidShareItem)?
-            .to_owned();
 
-        let securable = match entity.as_str() {
-            "SHARE" => Securable::Share,
-            "SCHEMA" => Securable::Schema,
-            "TABLE" => Securable::Table,
-            _ => {
-                // TODO custom error message
-                return Err(DynamoError::InvalidShareItem);
-            }
-        };
+        let result = query
+            .send()
+            .await
+            .map_err(|e| CatalogError::internal(e.to_string()))?;
 
-        Ok(Self {
-            share_name,
-            schema_name: Some(schema_name),
-            table_name: Some(table_name),
-            securable,
-        })
+        let tables = result
+            .items()
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
+
+        Ok(Page::new(
+            tables,
+            result.last_evaluated_key().map(key_to_token),
+        ))
     }
 }
 
-impl TryFrom<&HashMap<String, AttributeValue>> for Share {
-    type Error = DynamoError;
-
-    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let key = DynamoKey::try_from(item)?;
-        let share_id = item.get("share_id").and_then(|v| v.as_s().ok().cloned());
-        let share = ShareBuilder::new(key.share_name()).set_id(share_id).build();
-
-        Ok(share)
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for Schema {
-    type Error = DynamoError;
-
-    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let key = DynamoKey::try_from(item)?;
-        let share_id = item.get("share_id").and_then(|v| v.as_s().ok().cloned());
-        let share = ShareBuilder::new(key.share_name()).set_id(share_id).build();
-
-        let schema_name = key.schema_name().ok_or(DynamoError::InvalidSchemaItem)?;
-        let schema = SchemaBuilder::new(share, schema_name).build();
-
-        Ok(schema)
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for Table {
-    type Error = DynamoError;
-
-    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let key = DynamoKey::try_from(item)?;
-
-        // required property
-        let storage_path = item
-            .get("storage_path")
-            .ok_or(Self::Error::Other)?
-            .as_s()
-            .map_err(|_| Self::Error::Other)?;
-
-        // optional properties
-        let table_id = item.get("table_id").and_then(|v| v.as_s().ok().cloned());
-        let table_format = item
-            .get("table_format")
-            .and_then(|v| v.as_s().ok().cloned());
-
-        let share_id = item.get("share_id").and_then(|v| v.as_s().ok().cloned());
-        let share = ShareBuilder::new(key.share_name()).set_id(share_id).build();
-
-        let schema_name = key.schema_name().ok_or(DynamoError::InvalidSchemaItem)?;
-        let schema = SchemaBuilder::new(share, schema_name).build();
-
-        let table_name = key.table_name().ok_or(DynamoError::InvalidTableItem)?;
-        let table = TableBuilder::new(schema, table_name, storage_path)
-            .set_id(table_id)
-            .set_format(table_format)
-            .build();
-
-        Ok(table)
-    }
-}
-
+/// A struct to represent the primary key of the DynamoDB table
 #[derive(Serialize, Deserialize)]
-struct DynamoCursor {
+struct DynamoKey {
     pk: String,
     sk: String,
 }
 
-impl DynamoCursor {
-    fn into_token(self) -> Result<String, DynamoError> {
-        let value = serde_json::to_vec(&self).map_err(|_| DynamoError::InvalidDynamoCursor)?;
-        let encoded_token = general_purpose::URL_SAFE.encode(value);
-        Ok(encoded_token)
-    }
-
-    fn into_start_key(self) -> HashMap<String, AttributeValue> {
-        let mut start_key = HashMap::new();
-        start_key.insert(String::from("PK"), AttributeValue::S(self.pk));
-        start_key.insert(String::from("SK"), AttributeValue::S(self.sk));
-        start_key
-    }
+/// Convert a pagination token to a DynamoDB key
+fn token_to_key(token: &str) -> HashMap<String, AttributeValue> {
+    let decoded_token = general_purpose::URL_SAFE.decode(token).unwrap();
+    let key: DynamoKey = serde_json::from_slice(&decoded_token).unwrap();
+    let map = HashMap::from_iter([
+        (String::from("PK"), AttributeValue::S(key.pk)),
+        (String::from("SK"), AttributeValue::S(key.sk)),
+    ]);
+    map
 }
 
-impl TryFrom<&str> for DynamoCursor {
-    type Error = DynamoError;
-
-    fn try_from(token: &str) -> Result<Self, Self::Error> {
-        let decoded_token = general_purpose::URL_SAFE
-            .decode(token)
-            .map_err(|_| DynamoError::InvalidListCursor)?;
-        let cursor =
-            serde_json::from_slice(&decoded_token).map_err(|_| DynamoError::InvalidListCursor)?;
-        Ok(cursor)
-    }
+/// Convert a DynamoDB key to a pagination token
+fn key_to_token(key: &HashMap<String, AttributeValue>) -> String {
+    let dynamo_key = DynamoKey {
+        pk: key.get("PK").unwrap().as_s().unwrap().to_owned(),
+        sk: key.get("SK").unwrap().as_s().unwrap().to_owned(),
+    };
+    let json = serde_json::to_vec(&dynamo_key).unwrap();
+    general_purpose::URL_SAFE.encode(&json)
 }
 
-impl TryFrom<&HashMap<String, AttributeValue>> for DynamoCursor {
-    type Error = DynamoError;
+impl TryFrom<&HashMap<String, AttributeValue>> for ShareInfo {
+    type Error = CatalogError;
 
     fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let pk = value
-            .get("PK")
-            .ok_or(DynamoError::Other)?
-            .as_s()
-            .map_err(|_| DynamoError::Other)?;
-        let sk = value
-            .get("SK")
-            .ok_or(DynamoError::Other)?
-            .as_s()
-            .map_err(|_| DynamoError::Other)?;
+        let share_name = extract_from_item(value, "share_name")?;
+        let share_id = extract_from_item_opt(value, "share_id");
 
-        Ok(Self {
-            pk: pk.to_owned(),
-            sk: sk.to_owned(),
-        })
+        Ok(ShareInfo::new(share_name, share_id))
     }
 }
 
-impl From<DynamoError> for CatalogError {
-    fn from(value: DynamoError) -> Self {
-        println!("ENCOUNTERED ERROR!: {:?}", &value);
-        match value {
-            DynamoError::InvalidListCursor => CatalogError::MalformedContinuationToken,
-            DynamoError::ShareNotFound { share } => {
-                CatalogError::ShareNotFound { share_name: share }
-            }
-            _ => CatalogError::Other {
-                reason: String::from(""),
-            },
-        }
+impl TryFrom<&HashMap<String, AttributeValue>> for SchemaInfo {
+    type Error = CatalogError;
+
+    fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
+        let name = extract_from_item(value, "schema_name")?;
+        let share_name = extract_from_item(value, "share_name")?;
+
+        Ok(Self::new(name, share_name))
     }
+}
+
+impl TryFrom<&HashMap<String, AttributeValue>> for TableInfo {
+    type Error = CatalogError;
+
+    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
+        let name = extract_from_item(item, "table_name")?;
+        let schema_name = extract_from_item(item, "schema_name")?;
+        let share_name = extract_from_item(item, "share_name")?;
+        let storage_location = extract_from_item(item, "storage_location")?;
+        let id = extract_from_item_opt(item, "table_id");
+        let share_id = extract_from_item_opt(item, "share_id");
+
+        Ok(Self::new(name, schema_name, share_name, storage_location))
+    }
+}
+
+fn extract_from_item(
+    item: &HashMap<String, AttributeValue>,
+    key: &str,
+) -> Result<String, CatalogError> {
+    item.get(key)
+        .ok_or(CatalogError::internal(format!(
+            "attribute `{}` not found in item",
+            key
+        )))?
+        .as_s()
+        .map_err(|_| CatalogError::internal(format!("attribute `{}` was not a string", key)))
+        .cloned()
+}
+
+fn extract_from_item_opt(item: &HashMap<String, AttributeValue>, key: &str) -> Option<String> {
+    item.get(key).and_then(|v| v.as_s().ok().cloned())
 }
 
 #[async_trait]
-impl Catalog for DynamoShareReader {
-    async fn list_shares(&self, pagination: &ListCursor) -> Result<List<Share>, CatalogError> {
-        self.query_shares(pagination).await.map_err(From::from)
-    }
-
-    async fn get_share(&self, share_name: &str) -> Result<Share, CatalogError> {
-        self.get_share(share_name).await.map_err(From::from)
+impl Catalog for DynamoCatalog {
+    async fn list_shares(
+        &self,
+        client_id: &ClientId,
+        pagination: &Pagination,
+    ) -> Result<Page<ShareInfo>, CatalogError> {
+        self.query_shares(client_id.to_string(), pagination).await
     }
 
     async fn list_schemas(
         &self,
+        client_id: &ClientId,
         share_name: &str,
-        pagination: &ListCursor,
-    ) -> Result<List<Schema>, CatalogError> {
-        self.query_schemas(share_name, pagination)
+        cursor: &Pagination,
+    ) -> Result<Page<SchemaInfo>, CatalogError> {
+        self.query_schemas(client_id.to_string(), share_name.to_owned(), cursor)
             .await
-            .map_err(From::from)
     }
 
     async fn list_tables_in_share(
         &self,
+        client_id: &ClientId,
         share_name: &str,
-        pagination: &ListCursor,
-    ) -> Result<List<Table>, CatalogError> {
-        self.query_tables_in_share(share_name, pagination)
+        cursor: &Pagination,
+    ) -> Result<Page<TableInfo>, CatalogError> {
+        self.query_tables_in_share(client_id.to_string(), share_name.to_owned(), cursor)
             .await
-            .map_err(From::from)
     }
 
     async fn list_tables_in_schema(
         &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
-        pagination: &ListCursor,
-    ) -> Result<List<Table>, CatalogError> {
-        self.query_tables_in_schema(share_name, schema_name, pagination)
-            .await
-            .map_err(From::from)
+        cursor: &Pagination,
+    ) -> Result<Page<TableInfo>, CatalogError> {
+        self.query_tables_in_schema(
+            client_id.to_string(),
+            share_name.to_owned(),
+            schema_name.to_owned(),
+            cursor,
+        )
+        .await
+    }
+
+    async fn get_share(
+        &self,
+        client_id: &ClientId,
+        share_name: &str,
+    ) -> Result<ShareInfo, CatalogError> {
+        self.get_share(client_id.to_string(), share_name).await
     }
 
     async fn get_table(
         &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, CatalogError> {
-        self.get_table(share_name, schema_name, table_name)
+    ) -> Result<TableInfo, CatalogError> {
+        self.get_table(
+            client_id.to_string(),
+            share_name.to_owned(),
+            schema_name.to_owned(),
+            table_name.to_owned(),
+        )
+        .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use aws_config::BehaviorVersion;
+    use aws_sdk_dynamodb::types::{
+        AttributeDefinition, BillingMode, KeySchemaElement, KeyType, ProvisionedThroughput,
+        ScalarAttributeType,
+    };
+    use testcontainers::clients::Cli;
+    use testcontainers_modules::dynamodb_local::DynamoDb;
+
+    #[tokio::test]
+    async fn test_parse_share_info() {
+        let mut item = HashMap::new();
+        item.insert(
+            "share_name".to_owned(),
+            AttributeValue::S("test-share".to_owned()),
+        );
+
+        let share_info: ShareInfo = (&item).try_into().unwrap();
+        assert_eq!(share_info.name(), "test-share");
+    }
+
+    #[tokio::test]
+    async fn test_parse_schema_info() {
+        let mut item = HashMap::new();
+        item.insert(
+            "schema_name".to_owned(),
+            AttributeValue::S("test-schema".to_owned()),
+        );
+        item.insert(
+            "share_name".to_owned(),
+            AttributeValue::S("test-share".to_owned()),
+        );
+
+        let schema_info: SchemaInfo = (&item).try_into().unwrap();
+        assert_eq!(schema_info.name(), "test-schema");
+        assert_eq!(schema_info.share_name(), "test-share");
+    }
+
+    #[tokio::test]
+    async fn share_curd() {
+        let docker = Cli::default();
+        let dynamo = DynamoDb::default();
+        let container = docker.run(dynamo);
+
+        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port(8000));
+        let shared_config = aws_config::defaults(BehaviorVersion::latest())
+            .endpoint_url(endpoint_uri)
+            .load()
+            .await;
+
+        let ddb_client = aws_sdk_dynamodb::Client::new(&shared_config);
+        let catalog = DynamoCatalog::new(ddb_client.clone(), "test-table");
+
+        let create_table_res = ddb_client
+            .create_table()
+            .table_name("test-table")
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("PK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("SK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("PK")
+                    .key_type(KeyType::Hash)
+                    .build()
+                    .unwrap(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("SK")
+                    .key_type(KeyType::Range)
+                    .build()
+                    .unwrap(),
+            )
+            .billing_mode(BillingMode::Provisioned)
+            .provisioned_throughput(
+                ProvisionedThroughput::builder()
+                    .read_capacity_units(5)
+                    .write_capacity_units(5)
+                    .build()
+                    .unwrap(),
+            )
+            .send()
             .await
-            .map_err(From::from)
+            .unwrap();
+        println!("{:?}", create_table_res);
+
+        let share = ShareInfo::new("my-share".to_owned(), Some("1".to_owned()));
+        catalog.put_share("1".to_owned(), share).await.unwrap();
+
+        let res = catalog.get_share("1".to_owned(), "my-share").await.unwrap();
+        println!("{:?}", res);
+
+        assert_eq!(res.name(), "my-share");
+        assert_eq!(res.id(), Some("1"));
+    }
+
+    #[tokio::test]
+    async fn schema_curd() {
+        let docker = Cli::default();
+        let dynamo = DynamoDb::default();
+        let container = docker.run(dynamo);
+        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port(8000));
+        let shared_config = aws_config::defaults(BehaviorVersion::latest())
+            .endpoint_url(endpoint_uri)
+            .load()
+            .await;
+
+        let ddb_client = aws_sdk_dynamodb::Client::new(&shared_config);
+        let catalog = DynamoCatalog::new(ddb_client.clone(), "test-table");
+
+        let create_table_res = ddb_client
+            .create_table()
+            .table_name("test-table")
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("PK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
+            .attribute_definitions(
+                AttributeDefinition::builder()
+                    .attribute_name("SK")
+                    .attribute_type(ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("PK")
+                    .key_type(KeyType::Hash)
+                    .build()
+                    .unwrap(),
+            )
+            .key_schema(
+                KeySchemaElement::builder()
+                    .attribute_name("SK")
+                    .key_type(KeyType::Range)
+                    .build()
+                    .unwrap(),
+            )
+            .billing_mode(BillingMode::Provisioned)
+            .provisioned_throughput(
+                ProvisionedThroughput::builder()
+                    .read_capacity_units(5)
+                    .write_capacity_units(5)
+                    .build()
+                    .unwrap(),
+            )
+            .send()
+            .await
+            .unwrap();
+        println!("{:?}", create_table_res);
+
+        let schema = SchemaInfo::new("my-schema".to_owned(), "my-share".to_owned());
+        catalog
+            .put_schema("1".to_owned(), "my-share".to_owned(), schema)
+            .await
+            .unwrap();
+
+        // let res = catalog
+        //     .get_schema(
+        //         "1".to_owned(),
+        //         "my-share".to_owned(),
+        //         "my-schema".to_owned(),
+        //     )
+        //     .await
+        //     .unwrap();
+        // println!("{:?}", res);
+
+        // assert_eq!(res.name(), "my-schema");
+        // assert_eq!(res.share_name(), "my-share");
     }
 }

@@ -6,10 +6,8 @@ use std::{error::Error, fmt::Display};
 
 use crate::auth::ClientId;
 
-pub mod ddb;
-// pub mod dynamo;
+pub mod dynamo;
 pub mod file;
-// pub mod mysql;
 // pub mod postgres;
 
 /// Trait implemented by Share managers that each represent a different backing
