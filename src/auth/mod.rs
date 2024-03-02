@@ -9,7 +9,7 @@ use tower::{Layer, Service};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientId {
     Anonymous,
-    Authenticated(String),
+    Known(String),
 }
 
 impl ClientId {
@@ -17,8 +17,8 @@ impl ClientId {
         Self::Anonymous
     }
 
-    pub fn authenticated(id: impl Into<String>) -> Self {
-        Self::Authenticated(id.into())
+    pub fn known(id: impl Into<String>) -> Self {
+        Self::Known(id.into())
     }
 }
 
@@ -32,7 +32,7 @@ impl Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClientId::Anonymous => write!(f, "ANONYMOUS"),
-            ClientId::Authenticated(id) => write!(f, "{}", id.as_str()),
+            ClientId::Known(id) => write!(f, "{}", id.as_str()),
         }
     }
 }

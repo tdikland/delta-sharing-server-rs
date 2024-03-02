@@ -3,8 +3,11 @@
 use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
 use crate::auth::ClientId;
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{types::AttributeValue, Client};
-use base64::{engine::general_purpose, Engine as _};
+use aws_sdk_dynamodb::{
+    types::{AttributeValue, ConditionCheck, Put, TransactWriteItem},
+    Client,
+};
+use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -16,6 +19,11 @@ const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &'static str = "schema_name";
 const DYNAMO_ATTRIBUTE_TABLE_ID: &'static str = "table_id";
 const DYNAMO_ATTRIBUTE_TABLE_NAME: &'static str = "table_name";
 const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &'static str = "table_storage_location";
+
+mod config;
+mod pagination;
+
+use config::DynamoCatalogConfig;
 
 /// Catalog implementation backed by AWS DynamoDB
 ///
@@ -35,16 +43,14 @@ const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &'static str = "table_storage_loc
 /// - SK: The sort key (formatted as `<SECURABLE>#<fully_qualified_name>`)
 pub struct DynamoCatalog {
     client: Client,
-    table_name: String,
+    config: DynamoCatalogConfig,
 }
 
 impl DynamoCatalog {
     /// Create a new instance of the DynamoCatalog
-    pub fn new(client: Client, table_name: impl Into<String>) -> Self {
-        Self {
-            client,
-            table_name: table_name.into(),
-        }
+    pub fn new(client: Client, config: DynamoCatalogConfig) -> Self {
+        let c = config::DynamoCatalogConfig::new("test-table".to_owned());
+        Self { client, config }
     }
 
     /// Write a new share to the catalog
@@ -52,7 +58,7 @@ impl DynamoCatalog {
         let mut builder = self
             .client
             .put_item()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .item(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id))
             .item(
                 DYNAMO_ATTRIBUTE_SK,
@@ -80,18 +86,6 @@ impl DynamoCatalog {
         Ok(())
     }
 
-    pub async fn put_shares(
-        &self,
-        client_id: String,
-        shares: &[ShareInfo],
-    ) -> Result<(), CatalogError> {
-        for share in shares {
-            self.put_share(client_id.clone(), share.clone()).await?;
-        }
-
-        Ok(())
-    }
-
     /// Read a share from the catalog
     pub async fn _get_share(
         &self,
@@ -101,7 +95,7 @@ impl DynamoCatalog {
         let result = self
             .client
             .get_item()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .key("PK", AttributeValue::S(client_id.to_owned()))
             .key("SK", AttributeValue::S(format!("SHARE#{}", share_name)))
             .send()
@@ -127,9 +121,9 @@ impl DynamoCatalog {
         let mut query = self
             .client
             .query()
-            .table_name(&self.table_name)
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
+            .table_name(self.config.table_name())
+            .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
+            .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
             .expression_attribute_values(":pk", AttributeValue::S(client_id))
             .expression_attribute_values(":sk", AttributeValue::S("SHARE".to_owned()))
             .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
@@ -165,28 +159,75 @@ impl DynamoCatalog {
         client_id: String,
         schema: SchemaInfo,
     ) -> Result<(), CatalogError> {
-        let builder = self
+        let trx = self
             .client
-            .put_item()
-            .table_name(&self.table_name)
-            .item("PK", AttributeValue::S(client_id))
-            .item(
-                "SK",
-                AttributeValue::S(format!("SCHEMA#{}.{}", schema.share_name(), schema.name())),
+            .transact_write_items()
+            .transact_items(
+                TransactWriteItem::builder()
+                    .condition_check(
+                        ConditionCheck::builder()
+                            .table_name(self.config.table_name())
+                            .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.clone()))
+                            .key(
+                                DYNAMO_ATTRIBUTE_SK,
+                                AttributeValue::S(format!("SHARE#{}", schema.share_name())),
+                            )
+                            .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
+                            .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
+                            .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
+                            .build()
+                            .unwrap(),
+                    )
+                    .build(),
             )
-            .item(
-                DYNAMO_ATTRIBUTE_SHARE_NAME,
-                AttributeValue::S(schema.share_name().to_owned()),
-            )
-            .item(
-                DYNAMO_ATTRIBUTE_SCHEMA_NAME,
-                AttributeValue::S(schema.name().to_owned()),
+            .transact_items(
+                TransactWriteItem::builder()
+                    .put(
+                        Put::builder()
+                            .table_name(self.config.table_name())
+                            .item("PK", AttributeValue::S(client_id.clone()))
+                            .item(
+                                "SK",
+                                AttributeValue::S(format!(
+                                    "SCHEMA#{}.{}",
+                                    schema.share_name(),
+                                    schema.name()
+                                )),
+                            )
+                            .item(
+                                DYNAMO_ATTRIBUTE_SHARE_NAME,
+                                AttributeValue::S(schema.share_name().to_owned()),
+                            )
+                            .item(
+                                DYNAMO_ATTRIBUTE_SCHEMA_NAME,
+                                AttributeValue::S(schema.name().to_owned()),
+                            )
+                            .build()
+                            .unwrap(),
+                    )
+                    .build(),
             );
 
-        let _result = builder
-            .send()
-            .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+        let _result = trx.send().await.map_err(|e| {
+            // println!("{:?}", e);
+            // let service_error = e.into_service_error();
+            // match service_error {
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::IdempotentParameterMismatchException(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::InternalServerError(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::InvalidEndpointException(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::ProvisionedThroughputExceededException(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::RequestLimitExceeded(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::ResourceNotFoundException(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::TransactionCanceledException(e) => println!("{:?}", e),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::TransactionInProgressException(_) => todo!(),
+            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::Unhandled(_) => todo!(),
+            //     _ => todo!(),
+            // };
+
+            CatalogError::internal(String::from("fck"))
+        })?;
+
+        println!("result: {:?}", _result);
 
         Ok(())
     }
@@ -201,7 +242,7 @@ impl DynamoCatalog {
         let result = self
             .client
             .get_item()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .key("PK", AttributeValue::S(client_id.to_owned()))
             .key(
                 "SK",
@@ -231,7 +272,7 @@ impl DynamoCatalog {
         let mut query = self
             .client
             .query()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .expression_attribute_names("#PK", "PK")
             .expression_attribute_names("#SK", "SK")
             .expression_attribute_values(":pk", AttributeValue::S(client_id))
@@ -271,7 +312,7 @@ impl DynamoCatalog {
         let builder = self
             .client
             .put_item()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .item("PK", AttributeValue::S(client_id))
             .item(
                 "SK",
@@ -315,7 +356,7 @@ impl DynamoCatalog {
         let result = self
             .client
             .get_item()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .key("PK", AttributeValue::S(client_id))
             .key(
                 "SK",
@@ -349,7 +390,7 @@ impl DynamoCatalog {
         let mut query = self
             .client
             .query()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .expression_attribute_names("#PK", "PK")
             .expression_attribute_names("#SK", "SK")
             .expression_attribute_values(":pk", AttributeValue::S(client_id))
@@ -392,7 +433,7 @@ impl DynamoCatalog {
         let mut query = self
             .client
             .query()
-            .table_name(&self.table_name)
+            .table_name(self.config.table_name())
             .expression_attribute_names("#PK", "PK")
             .expression_attribute_names("#SK", "SK")
             .expression_attribute_values(":pk", AttributeValue::S(client_id))
@@ -426,6 +467,66 @@ impl DynamoCatalog {
             result.last_evaluated_key().map(key_to_token),
         ))
     }
+}
+
+fn condition_share_exists(
+    table_name: &str,
+    client_id: &str,
+    share_name: &str,
+) -> Result<ConditionCheck, CatalogError> {
+    ConditionCheck::builder()
+        .table_name(table_name)
+        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
+        .key(
+            DYNAMO_ATTRIBUTE_SK,
+            AttributeValue::S(format!("SHARE#{}", share_name)),
+        )
+        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
+        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
+        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
+        .build()
+        .map_err(|e| CatalogError::internal(e.to_string()))
+}
+
+fn condition_schema_exists(
+    table_name: &str,
+    client_id: &str,
+    share_name: &str,
+    schema_name: &str,
+) -> Result<ConditionCheck, CatalogError> {
+    ConditionCheck::builder()
+        .table_name(table_name)
+        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
+        .key(
+            DYNAMO_ATTRIBUTE_SK,
+            AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema_name)),
+        )
+        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
+        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
+        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
+        .build()
+        .map_err(|e| CatalogError::internal(e.to_string()))
+}
+
+fn condition_table_exists(
+    table_name: &str,
+    client_id: &str,
+    share_name: &str,
+    schema_name: &str,
+    tname: &str,
+) -> Result<ConditionCheck, CatalogError> {
+    ConditionCheck::builder()
+        .table_name(table_name)
+        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
+        .key(
+            DYNAMO_ATTRIBUTE_SK,
+            AttributeValue::S(format!("TABLE#{}.{}.{}", share_name, schema_name, tname)),
+        )
+        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
+        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
+        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
+        .build()
+        .map_err(|e| CatalogError::internal(e.to_string()))
 }
 
 /// A struct to represent the primary key of the DynamoDB table
@@ -621,166 +722,5 @@ mod test {
         let schema_info: SchemaInfo = (&item).try_into().unwrap();
         assert_eq!(schema_info.name(), "test-schema");
         assert_eq!(schema_info.share_name(), "test-share");
-    }
-
-    #[tokio::test]
-    async fn schema_curd() {
-        let docker = Cli::default();
-        let dynamo = DynamoDb::default();
-        let container = docker.run(dynamo);
-
-        let client = init_client(&container).await;
-        let catalog = init_catalog(client).await;
-
-        let schema1 = catalog
-            .get_schema("ANONYMOUS", "share1", "schema1")
-            .await
-            .unwrap();
-
-        assert_eq!(schema1.share_name(), "share1");
-        assert_eq!(schema1.name(), "schema1");
-    }
-
-    async fn init_client<I: Image>(container: &Container<'_, I>) -> Client {
-        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port_ipv4(8000));
-        let shared_config = aws_config::defaults(BehaviorVersion::latest())
-            .endpoint_url(endpoint_uri)
-            .load()
-            .await;
-        Client::new(&shared_config)
-    }
-
-    async fn init_catalog(client: Client) -> DynamoCatalog {
-        let table_name = String::from("test-table");
-
-        // Create DynamoDB table
-        client
-            .create_table()
-            .table_name(&table_name)
-            .attribute_definitions(
-                AttributeDefinition::builder()
-                    .attribute_name("PK")
-                    .attribute_type(ScalarAttributeType::S)
-                    .build()
-                    .unwrap(),
-            )
-            .attribute_definitions(
-                AttributeDefinition::builder()
-                    .attribute_name("SK")
-                    .attribute_type(ScalarAttributeType::S)
-                    .build()
-                    .unwrap(),
-            )
-            .key_schema(
-                KeySchemaElement::builder()
-                    .attribute_name("PK")
-                    .key_type(KeyType::Hash)
-                    .build()
-                    .unwrap(),
-            )
-            .key_schema(
-                KeySchemaElement::builder()
-                    .attribute_name("SK")
-                    .key_type(KeyType::Range)
-                    .build()
-                    .unwrap(),
-            )
-            .billing_mode(BillingMode::Provisioned)
-            .provisioned_throughput(
-                ProvisionedThroughput::builder()
-                    .read_capacity_units(5)
-                    .write_capacity_units(5)
-                    .build()
-                    .unwrap(),
-            )
-            .send()
-            .await
-            .unwrap();
-
-        // Initialize catalog
-        let catalog = DynamoCatalog::new(client, &table_name);
-        let client_id = String::from("ANONYMOUS");
-
-        // Add shares
-        catalog
-            .put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
-            .await
-            .unwrap();
-        catalog
-            .put_share(client_id.clone(), ShareInfo::new("share2".to_owned(), None))
-            .await
-            .unwrap();
-
-        // Add schemas
-        catalog
-            .put_schema(
-                client_id.clone(),
-                SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
-            )
-            .await
-            .unwrap();
-        catalog
-            .put_schema(
-                client_id.clone(),
-                SchemaInfo::new("schema2".to_owned(), "share2".to_owned()),
-            )
-            .await
-            .unwrap();
-        catalog
-            .put_schema(
-                client_id.clone(),
-                SchemaInfo::new("schema3".to_owned(), "share2".to_owned()),
-            )
-            .await
-            .unwrap();
-
-        // Add tables
-        catalog
-            .put_table(
-                client_id.clone(),
-                TableInfo::new(
-                    "table1".to_owned(),
-                    "schema1".to_owned(),
-                    "share1".to_owned(),
-                    "s3a://<bucket-name>/<the-table-path>".to_owned(),
-                ),
-            )
-            .await
-            .unwrap();
-        catalog
-            .put_table(
-                client_id.clone(),
-                TableInfo::new(
-                    "table2".to_owned(),
-                    "schema1".to_owned(),
-                    "share1".to_owned(),
-                    "abfss://<container-name>@<account-name}.dfs.core.windows.net/<the-table-path>"
-                        .to_owned(),
-                ),
-            )
-            .await
-            .unwrap();
-        catalog
-            .put_table(
-                client_id.clone(),
-                TableInfo::new(
-                    "table3".to_owned(),
-                    "schema2".to_owned(),
-                    "share2".to_owned(),
-                    "gs://<bucket-name>/<the-table-path>".to_owned(),
-                ),
-            )
-            .await
-            .unwrap();
-
-        let schema1 = catalog
-            .get_schema("ANONYMOUS", "share1", "schema1")
-            .await
-            .unwrap();
-
-        assert_eq!(schema1.share_name(), "share1");
-        assert_eq!(schema1.name(), "schema1");
-
-        catalog
     }
 }

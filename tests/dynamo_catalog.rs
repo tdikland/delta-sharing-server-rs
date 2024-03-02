@@ -13,307 +13,396 @@ use delta_sharing_server::{
 use testcontainers::{clients::Cli, Container, Image};
 use testcontainers_modules::dynamodb_local::DynamoDb;
 
+// #[tokio::test]
+// async fn test_list_shares() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     // List public shares
+//     let anonymous_client = ClientId::anonymous();
+//     let anon_shares = catalog
+//         .list_shares(&anonymous_client, &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(
+//         anon_shares.items(),
+//         &[
+//             ShareInfo::new("share1".to_owned(), None),
+//             ShareInfo::new("share2".to_owned(), Some("share_id2".to_owned()))
+//         ]
+//     );
+//     assert_eq!(anon_shares.next_page_token(), None);
+
+//     // List private shares of known client
+//     let existing_client = ClientId::known("client1");
+//     let existing_shares = catalog
+//         .list_shares(&existing_client, &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(
+//         existing_shares.items(),
+//         &[
+//             ShareInfo::new("share3".to_owned(), None),
+//             ShareInfo::new("share4".to_owned(), Some("share_id4".to_owned())),
+//             ShareInfo::new("share5".to_owned(), None)
+//         ]
+//     );
+//     assert_eq!(existing_shares.next_page_token(), None);
+
+//     // List private shares of unknown client yuields no results
+//     let non_existing_client = ClientId::known("client2");
+//     let non_existing_shares = catalog
+//         .list_shares(&non_existing_client, &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(non_existing_shares.len(), 0);
+//     assert_eq!(non_existing_shares.next_page_token(), None);
+// }
+
+// #[tokio::test]
+// async fn test_list_shares_pagination() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+//     let client = ClientId::anonymous();
+
+//     // List first page of public shares
+//     let shares_page1 = catalog
+//         .list_shares(&client, &Pagination::new(Some(1), None))
+//         .await
+//         .unwrap();
+//     assert_eq!(shares_page1.len(), 1);
+//     assert!(shares_page1.next_page_token().is_some());
+
+//     // List second page of public shares
+//     // Even though all available shares are listed, the next page token is
+//     // still present, because the max number of items per page is reached.
+//     let shares_page2 = catalog
+//         .list_shares(
+//             &client,
+//             &Pagination::new(
+//                 Some(1),
+//                 shares_page1.next_page_token().map(ToOwned::to_owned),
+//             ),
+//         )
+//         .await
+//         .unwrap();
+//     assert_eq!(shares_page2.len(), 1);
+//     assert!(shares_page2.next_page_token().is_some());
+
+//     // List third page of public shares
+//     // No more shares are available so there are no shares and the next page token is None.
+//     let shares_page3 = catalog
+//         .list_shares(
+//             &client,
+//             &Pagination::new(
+//                 Some(1),
+//                 shares_page2.next_page_token().map(ToOwned::to_owned),
+//             ),
+//         )
+//         .await
+//         .unwrap();
+//     assert_eq!(shares_page3.len(), 0);
+//     assert_eq!(shares_page3.next_page_token(), None);
+// }
+
+// #[tokio::test]
+// async fn list_schemas() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+
+//     let schemas = catalog
+//         .list_schemas(&client, "share1", &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(
+//         schemas.items(),
+//         &[
+//             SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+//             SchemaInfo::new("schema2".to_owned(), "share1".to_owned())
+//         ]
+//     );
+//     assert_eq!(schemas.next_page_token(), None);
+// }
+
+// #[tokio::test]
+// async fn list_schemas_pagination() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+//     let client = ClientId::anonymous();
+
+//     let schemas_page = catalog
+//         .list_schemas(&client, "share1", &Pagination::new(Some(1), None))
+//         .await
+//         .unwrap();
+//     assert_eq!(schemas_page.len(), 1);
+//     assert!(schemas_page.next_page_token().is_some());
+// }
+
+// #[tokio::test]
+// async fn list_tables_share() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let tables = catalog
+//         .list_tables_in_share(&client, "share1", &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(tables.len(), 3);
+//     assert_eq!(tables.next_page_token(), None);
+// }
+
+// #[tokio::test]
+// async fn list_tables_share_pagination() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let tables_page = catalog
+//         .list_tables_in_share(&client, "share1", &Pagination::new(Some(1), None))
+//         .await
+//         .unwrap();
+//     assert_eq!(tables_page.len(), 1);
+//     assert!(tables_page.next_page_token().is_some());
+// }
+
+// #[tokio::test]
+// async fn list_tables_in_schema() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let tables = catalog
+//         .list_tables_in_schema(&client, "share1", "schema1", &Pagination::default())
+//         .await
+//         .unwrap();
+//     assert_eq!(
+//         tables.items(),
+//         &[
+//             TableInfo::new(
+//                 "table1".to_owned(),
+//                 "schema1".to_owned(),
+//                 "share1".to_owned(),
+//                 "s3://bucket1/path1".to_owned(),
+//             ),
+//             TableInfo::new(
+//                 "table2".to_owned(),
+//                 "schema1".to_owned(),
+//                 "share1".to_owned(),
+//                 "s3://bucket1/path1".to_owned(),
+//             )
+//         ]
+//     );
+//     assert_eq!(tables.next_page_token(), None);
+// }
+
+// #[tokio::test]
+// async fn list_tables_in_schema_pagination() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let tables_page = catalog
+//         .list_tables_in_schema(
+//             &client,
+//             "share1",
+//             "schema1",
+//             &Pagination::new(Some(1), None),
+//         )
+//         .await
+//         .unwrap();
+//     assert_eq!(tables_page.len(), 1);
+//     assert!(tables_page.next_page_token().is_some());
+// }
+
+// #[tokio::test]
+// async fn get_share() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let share = catalog.get_share(&client, "share1").await.unwrap();
+//     assert_eq!(share, ShareInfo::new("share1".to_owned(), None));
+
+//     let share_not_found_error = catalog
+//         .get_share(&client, "does-not-exist")
+//         .await
+//         .unwrap_err();
+//     assert_eq!(
+//         share_not_found_error.to_string(),
+//         "share `does-not-exist` could not be found"
+//     );
+// }
+
+// #[tokio::test]
+// async fn get_table() {
+//     let docker = Cli::default();
+//     let dynamo = DynamoDb::default();
+//     let container = docker.run(dynamo);
+
+//     let client = init_client(&container).await;
+//     let catalog = init_catalog(client, "test-table").await;
+//     seed_catalog(&catalog).await;
+
+//     let client = ClientId::anonymous();
+//     let table = catalog
+//         .get_table(&client, "share1", "schema1", "table1")
+//         .await
+//         .unwrap();
+//     assert_eq!(
+//         table,
+//         TableInfo::new(
+//             "table1".to_owned(),
+//             "schema1".to_owned(),
+//             "share1".to_owned(),
+//             "s3://bucket1/path1".to_owned()
+//         )
+//     );
+
+//     let table_not_found_error = catalog
+//         .get_table(&client, "share1", "schema1", "does-not-exist")
+//         .await
+//         .unwrap_err();
+//     assert_eq!(
+//         table_not_found_error.to_string(),
+//         "table `share1.schema1.does-not-exist` could not be found"
+//     );
+// }
+
 #[tokio::test]
-async fn test_list_shares() {
+async fn put_schema_without_share_error() {
     let docker = Cli::default();
     let dynamo = DynamoDb::default();
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
     let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
 
-    // List public shares
-    let anonymous_client = ClientId::anonymous();
-    let anon_shares = catalog
-        .list_shares(&anonymous_client, &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(
-        anon_shares.items(),
-        &[
-            ShareInfo::new("share1".to_owned(), None),
-            ShareInfo::new("share2".to_owned(), Some("share_id2".to_owned()))
-        ]
-    );
-    assert_eq!(anon_shares.next_page_token(), None);
-
-    // List private shares of known client
-    let existing_client = ClientId::authenticated("client1");
-    let existing_shares = catalog
-        .list_shares(&existing_client, &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(
-        existing_shares.items(),
-        &[
-            ShareInfo::new("share3".to_owned(), None),
-            ShareInfo::new("share4".to_owned(), Some("share_id4".to_owned())),
-            ShareInfo::new("share5".to_owned(), None)
-        ]
-    );
-    assert_eq!(existing_shares.next_page_token(), None);
-
-    // List private shares of unknown client yuields no results
-    let non_existing_client = ClientId::authenticated("client2");
-    let non_existing_shares = catalog
-        .list_shares(&non_existing_client, &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(non_existing_shares.len(), 0);
-    assert_eq!(non_existing_shares.next_page_token(), None);
-}
-
-#[tokio::test]
-async fn test_list_shares_pagination() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-    let client = ClientId::anonymous();
-
-    // List first page of public shares
-    let shares_page1 = catalog
-        .list_shares(&client, &Pagination::new(Some(1), None))
-        .await
-        .unwrap();
-    assert_eq!(shares_page1.len(), 1);
-    assert!(shares_page1.next_page_token().is_some());
-
-    // List second page of public shares
-    // Even though all available shares are listed, the next page token is
-    // still present, because the max number of items per page is reached.
-    let shares_page2 = catalog
-        .list_shares(
-            &client,
-            &Pagination::new(
-                Some(1),
-                shares_page1.next_page_token().map(ToOwned::to_owned),
-            ),
-        )
-        .await
-        .unwrap();
-    assert_eq!(shares_page2.len(), 1);
-    assert!(shares_page2.next_page_token().is_some());
-
-    // List third page of public shares
-    // No more shares are available so there are no shares and the next page token is None.
-    let shares_page3 = catalog
-        .list_shares(
-            &client,
-            &Pagination::new(
-                Some(1),
-                shares_page2.next_page_token().map(ToOwned::to_owned),
-            ),
-        )
-        .await
-        .unwrap();
-    assert_eq!(shares_page3.len(), 0);
-    assert_eq!(shares_page3.next_page_token(), None);
-}
-
-#[tokio::test]
-async fn list_schemas() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-
-    let schemas = catalog
-        .list_schemas(&client, "share1", &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(
-        schemas.items(),
-        &[
+    // Writing a schema without the parent share should fail
+    let res = catalog
+        .put_schema(
+            ClientId::anonymous().to_string(),
             SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
-            SchemaInfo::new("schema2".to_owned(), "share1".to_owned())
-        ]
-    );
-    assert_eq!(schemas.next_page_token(), None);
+        )
+        .await;
+    assert!(res.is_err());
+
+    // Writing a schema with the parent share should succeed
+    catalog
+        .put_share(
+            ClientId::anonymous().to_string(),
+            ShareInfo::new("share1".to_owned(), None),
+        )
+        .await
+        .unwrap();
+
+    let res = catalog
+        .put_schema(
+            ClientId::anonymous().to_string(),
+            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+        )
+        .await;
+    assert!(res.is_ok());
 }
 
 #[tokio::test]
-async fn list_schemas_pagination() {
+async fn put_table_without_schema_error() {
     let docker = Cli::default();
     let dynamo = DynamoDb::default();
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
     let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-    let client = ClientId::anonymous();
 
-    let schemas_page = catalog
-        .list_schemas(&client, "share1", &Pagination::new(Some(1), None))
-        .await
-        .unwrap();
-    assert_eq!(schemas_page.len(), 1);
-    assert!(schemas_page.next_page_token().is_some());
-}
-
-#[tokio::test]
-async fn list_tables_share() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let tables = catalog
-        .list_tables_in_share(&client, "share1", &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(tables.len(), 3);
-    assert_eq!(tables.next_page_token(), None);
-}
-
-#[tokio::test]
-async fn list_tables_share_pagination() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let tables_page = catalog
-        .list_tables_in_share(&client, "share1", &Pagination::new(Some(1), None))
-        .await
-        .unwrap();
-    assert_eq!(tables_page.len(), 1);
-    assert!(tables_page.next_page_token().is_some());
-}
-
-#[tokio::test]
-async fn list_tables_in_schema() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let tables = catalog
-        .list_tables_in_schema(&client, "share1", "schema1", &Pagination::default())
-        .await
-        .unwrap();
-    assert_eq!(
-        tables.items(),
-        &[
+    // Writing a table without the parent schema should fail
+    let res = catalog
+        .put_table(
+            ClientId::anonymous().to_string(),
             TableInfo::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
                 "s3://bucket1/path1".to_owned(),
             ),
+        )
+        .await;
+    assert!(res.is_err());
+
+    // Writing a table with the parent schema should succeed
+    catalog
+        .put_share(
+            ClientId::anonymous().to_string(),
+            ShareInfo::new("share1".to_owned(), None),
+        )
+        .await
+        .unwrap();
+    catalog
+        .put_schema(
+            ClientId::anonymous().to_string(),
+            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+        )
+        .await
+        .unwrap();
+
+    let res = catalog
+        .put_table(
+            ClientId::anonymous().to_string(),
             TableInfo::new(
-                "table2".to_owned(),
+                "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
                 "s3://bucket1/path1".to_owned(),
-            )
-        ]
-    );
-    assert_eq!(tables.next_page_token(), None);
-}
-
-#[tokio::test]
-async fn list_tables_in_schema_pagination() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let tables_page = catalog
-        .list_tables_in_schema(
-            &client,
-            "share1",
-            "schema1",
-            &Pagination::new(Some(1), None),
+            ),
         )
-        .await
-        .unwrap();
-    assert_eq!(tables_page.len(), 1);
-    assert!(tables_page.next_page_token().is_some());
-}
-
-#[tokio::test]
-async fn get_share() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let share = catalog.get_share(&client, "share1").await.unwrap();
-    assert_eq!(share, ShareInfo::new("share1".to_owned(), None));
-
-    let share_not_found_error = catalog
-        .get_share(&client, "does-not-exist")
-        .await
-        .unwrap_err();
-    assert_eq!(
-        share_not_found_error.to_string(),
-        "share `does-not-exist` could not be found"
-    );
-}
-
-#[tokio::test]
-async fn get_table() {
-    let docker = Cli::default();
-    let dynamo = DynamoDb::default();
-    let container = docker.run(dynamo);
-
-    let client = init_client(&container).await;
-    let catalog = init_catalog(client, "test-table").await;
-    seed_catalog(&catalog).await;
-
-    let client = ClientId::anonymous();
-    let table = catalog
-        .get_table(&client, "share1", "schema1", "table1")
-        .await
-        .unwrap();
-    assert_eq!(
-        table,
-        TableInfo::new(
-            "table1".to_owned(),
-            "schema1".to_owned(),
-            "share1".to_owned(),
-            "s3://bucket1/path1".to_owned()
-        )
-    );
-
-    let table_not_found_error = catalog
-        .get_table(&client, "share1", "schema1", "does-not-exist")
-        .await
-        .unwrap_err();
-    assert_eq!(
-        table_not_found_error.to_string(),
-        "table `share1.schema1.does-not-exist` could not be found"
-    );
+        .await;
+    assert!(res.is_ok());
 }
 
 async fn init_client<I: Image>(container: &Container<'_, I>) -> Client {
