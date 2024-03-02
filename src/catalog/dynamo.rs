@@ -80,17 +80,29 @@ impl DynamoCatalog {
         Ok(())
     }
 
-    /// Read a share from the catalog
-    pub async fn get_share(
+    pub async fn put_shares(
         &self,
         client_id: String,
+        shares: &[ShareInfo],
+    ) -> Result<(), CatalogError> {
+        for share in shares {
+            self.put_share(client_id.clone(), share.clone()).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Read a share from the catalog
+    pub async fn _get_share(
+        &self,
+        client_id: &str,
         share_name: &str,
     ) -> Result<ShareInfo, CatalogError> {
         let result = self
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key("PK", AttributeValue::S(client_id))
+            .key("PK", AttributeValue::S(client_id.to_owned()))
             .key("SK", AttributeValue::S(format!("SHARE#{}", share_name)))
             .send()
             .await
@@ -151,7 +163,6 @@ impl DynamoCatalog {
     pub async fn put_schema(
         &self,
         client_id: String,
-        share_name: String,
         schema: SchemaInfo,
     ) -> Result<(), CatalogError> {
         let builder = self
@@ -161,10 +172,16 @@ impl DynamoCatalog {
             .item("PK", AttributeValue::S(client_id))
             .item(
                 "SK",
-                AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema.name())),
+                AttributeValue::S(format!("SCHEMA#{}.{}", schema.share_name(), schema.name())),
             )
-            .item("share_name", AttributeValue::S(share_name))
-            .item("name", AttributeValue::S(schema.name().to_owned()));
+            .item(
+                DYNAMO_ATTRIBUTE_SHARE_NAME,
+                AttributeValue::S(schema.share_name().to_owned()),
+            )
+            .item(
+                DYNAMO_ATTRIBUTE_SCHEMA_NAME,
+                AttributeValue::S(schema.name().to_owned()),
+            );
 
         let _result = builder
             .send()
@@ -177,27 +194,30 @@ impl DynamoCatalog {
     /// Read a schema from the catalog
     pub async fn get_schema(
         &self,
-        client_id: String,
-        share_name: String,
-        schema_name: String,
+        client_id: &str,
+        share_name: &str,
+        schema_name: &str,
     ) -> Result<SchemaInfo, CatalogError> {
         let result = self
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key("PK", AttributeValue::S(client_id))
+            .key("PK", AttributeValue::S(client_id.to_owned()))
             .key(
                 "SK",
                 AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema_name)),
             )
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                println!("{:?}", e);
+                CatalogError::internal(e.to_string())
+            })?;
 
         if let Some(item) = result.item() {
             Ok(item.try_into()?)
         } else {
-            Err(CatalogError::schema_not_found(&share_name, &schema_name))
+            Err(CatalogError::schema_not_found(share_name, schema_name))
         }
     }
 
@@ -247,13 +267,7 @@ impl DynamoCatalog {
     }
 
     /// Write a new table to the catalog
-    pub async fn put_table(
-        &self,
-        client_id: String,
-        share_name: String,
-        schema_name: String,
-        table: TableInfo,
-    ) -> Result<(), CatalogError> {
+    pub async fn put_table(&self, client_id: String, table: TableInfo) -> Result<(), CatalogError> {
         let builder = self
             .client
             .put_item()
@@ -263,12 +277,24 @@ impl DynamoCatalog {
                 "SK",
                 AttributeValue::S(format!(
                     "TABLE#{}.{}.{}",
-                    share_name,
-                    schema_name,
+                    table.share_name(),
+                    table.schema_name(),
                     table.name()
                 )),
             )
-            .item("name", AttributeValue::S(table.name().to_owned()));
+            .item("table_name", AttributeValue::S(table.name().to_owned()))
+            .item(
+                "schema_name",
+                AttributeValue::S(table.schema_name().to_owned()),
+            )
+            .item(
+                "share_name",
+                AttributeValue::S(table.share_name().to_owned()),
+            )
+            .item(
+                "storage_location",
+                AttributeValue::S(table.storage_path().to_owned()),
+            );
 
         let _result = builder
             .send()
@@ -279,7 +305,7 @@ impl DynamoCatalog {
     }
 
     /// Read a table from the catalog
-    pub async fn get_table(
+    pub async fn _get_table(
         &self,
         client_id: String,
         share_name: String,
@@ -445,8 +471,8 @@ impl TryFrom<&HashMap<String, AttributeValue>> for SchemaInfo {
     type Error = CatalogError;
 
     fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let name = extract_from_item(value, "schema_name")?;
-        let share_name = extract_from_item(value, "share_name")?;
+        let name = extract_from_item(value, DYNAMO_ATTRIBUTE_SCHEMA_NAME)?;
+        let share_name = extract_from_item(value, DYNAMO_ATTRIBUTE_SHARE_NAME)?;
 
         Ok(Self::new(name, share_name))
     }
@@ -536,7 +562,7 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
     ) -> Result<ShareInfo, CatalogError> {
-        self.get_share(client_id.to_string(), share_name).await
+        self._get_share(&client_id.to_string(), share_name).await
     }
 
     async fn get_table(
@@ -546,7 +572,7 @@ impl Catalog for DynamoCatalog {
         schema_name: &str,
         table_name: &str,
     ) -> Result<TableInfo, CatalogError> {
-        self.get_table(
+        self._get_table(
             client_id.to_string(),
             share_name.to_owned(),
             schema_name.to_owned(),
@@ -565,7 +591,7 @@ mod test {
         AttributeDefinition, BillingMode, KeySchemaElement, KeyType, ProvisionedThroughput,
         ScalarAttributeType,
     };
-    use testcontainers::clients::Cli;
+    use testcontainers::{clients::Cli, Container, Image};
     use testcontainers_modules::dynamodb_local::DynamoDb;
 
     #[tokio::test]
@@ -598,91 +624,39 @@ mod test {
     }
 
     #[tokio::test]
-    async fn share_curd() {
-        let docker = Cli::default();
-        let dynamo = DynamoDb::default();
-        let container = docker.run(dynamo);
-
-        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port(8000));
-        let shared_config = aws_config::defaults(BehaviorVersion::latest())
-            .endpoint_url(endpoint_uri)
-            .load()
-            .await;
-
-        let ddb_client = aws_sdk_dynamodb::Client::new(&shared_config);
-        let catalog = DynamoCatalog::new(ddb_client.clone(), "test-table");
-
-        let create_table_res = ddb_client
-            .create_table()
-            .table_name("test-table")
-            .attribute_definitions(
-                AttributeDefinition::builder()
-                    .attribute_name("PK")
-                    .attribute_type(ScalarAttributeType::S)
-                    .build()
-                    .unwrap(),
-            )
-            .attribute_definitions(
-                AttributeDefinition::builder()
-                    .attribute_name("SK")
-                    .attribute_type(ScalarAttributeType::S)
-                    .build()
-                    .unwrap(),
-            )
-            .key_schema(
-                KeySchemaElement::builder()
-                    .attribute_name("PK")
-                    .key_type(KeyType::Hash)
-                    .build()
-                    .unwrap(),
-            )
-            .key_schema(
-                KeySchemaElement::builder()
-                    .attribute_name("SK")
-                    .key_type(KeyType::Range)
-                    .build()
-                    .unwrap(),
-            )
-            .billing_mode(BillingMode::Provisioned)
-            .provisioned_throughput(
-                ProvisionedThroughput::builder()
-                    .read_capacity_units(5)
-                    .write_capacity_units(5)
-                    .build()
-                    .unwrap(),
-            )
-            .send()
-            .await
-            .unwrap();
-        println!("{:?}", create_table_res);
-
-        let share = ShareInfo::new("my-share".to_owned(), Some("1".to_owned()));
-        catalog.put_share("1".to_owned(), share).await.unwrap();
-
-        let res = catalog.get_share("1".to_owned(), "my-share").await.unwrap();
-        println!("{:?}", res);
-
-        assert_eq!(res.name(), "my-share");
-        assert_eq!(res.id(), Some("1"));
-    }
-
-    #[tokio::test]
     async fn schema_curd() {
         let docker = Cli::default();
         let dynamo = DynamoDb::default();
         let container = docker.run(dynamo);
-        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port(8000));
+
+        let client = init_client(&container).await;
+        let catalog = init_catalog(client).await;
+
+        let schema1 = catalog
+            .get_schema("ANONYMOUS", "share1", "schema1")
+            .await
+            .unwrap();
+
+        assert_eq!(schema1.share_name(), "share1");
+        assert_eq!(schema1.name(), "schema1");
+    }
+
+    async fn init_client<I: Image>(container: &Container<'_, I>) -> Client {
+        let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port_ipv4(8000));
         let shared_config = aws_config::defaults(BehaviorVersion::latest())
             .endpoint_url(endpoint_uri)
             .load()
             .await;
+        Client::new(&shared_config)
+    }
 
-        let ddb_client = aws_sdk_dynamodb::Client::new(&shared_config);
-        let catalog = DynamoCatalog::new(ddb_client.clone(), "test-table");
+    async fn init_catalog(client: Client) -> DynamoCatalog {
+        let table_name = String::from("test-table");
 
-        let create_table_res = ddb_client
+        // Create DynamoDB table
+        client
             .create_table()
-            .table_name("test-table")
+            .table_name(&table_name)
             .attribute_definitions(
                 AttributeDefinition::builder()
                     .attribute_name("PK")
@@ -722,25 +696,91 @@ mod test {
             .send()
             .await
             .unwrap();
-        println!("{:?}", create_table_res);
 
-        let schema = SchemaInfo::new("my-schema".to_owned(), "my-share".to_owned());
+        // Initialize catalog
+        let catalog = DynamoCatalog::new(client, &table_name);
+        let client_id = String::from("ANONYMOUS");
+
+        // Add shares
         catalog
-            .put_schema("1".to_owned(), "my-share".to_owned(), schema)
+            .put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
+            .await
+            .unwrap();
+        catalog
+            .put_share(client_id.clone(), ShareInfo::new("share2".to_owned(), None))
             .await
             .unwrap();
 
-        // let res = catalog
-        //     .get_schema(
-        //         "1".to_owned(),
-        //         "my-share".to_owned(),
-        //         "my-schema".to_owned(),
-        //     )
-        //     .await
-        //     .unwrap();
-        // println!("{:?}", res);
+        // Add schemas
+        catalog
+            .put_schema(
+                client_id.clone(),
+                SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            )
+            .await
+            .unwrap();
+        catalog
+            .put_schema(
+                client_id.clone(),
+                SchemaInfo::new("schema2".to_owned(), "share2".to_owned()),
+            )
+            .await
+            .unwrap();
+        catalog
+            .put_schema(
+                client_id.clone(),
+                SchemaInfo::new("schema3".to_owned(), "share2".to_owned()),
+            )
+            .await
+            .unwrap();
 
-        // assert_eq!(res.name(), "my-schema");
-        // assert_eq!(res.share_name(), "my-share");
+        // Add tables
+        catalog
+            .put_table(
+                client_id.clone(),
+                TableInfo::new(
+                    "table1".to_owned(),
+                    "schema1".to_owned(),
+                    "share1".to_owned(),
+                    "s3a://<bucket-name>/<the-table-path>".to_owned(),
+                ),
+            )
+            .await
+            .unwrap();
+        catalog
+            .put_table(
+                client_id.clone(),
+                TableInfo::new(
+                    "table2".to_owned(),
+                    "schema1".to_owned(),
+                    "share1".to_owned(),
+                    "abfss://<container-name>@<account-name}.dfs.core.windows.net/<the-table-path>"
+                        .to_owned(),
+                ),
+            )
+            .await
+            .unwrap();
+        catalog
+            .put_table(
+                client_id.clone(),
+                TableInfo::new(
+                    "table3".to_owned(),
+                    "schema2".to_owned(),
+                    "share2".to_owned(),
+                    "gs://<bucket-name>/<the-table-path>".to_owned(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        let schema1 = catalog
+            .get_schema("ANONYMOUS", "share1", "schema1")
+            .await
+            .unwrap();
+
+        assert_eq!(schema1.share_name(), "share1");
+        assert_eq!(schema1.name(), "schema1");
+
+        catalog
     }
 }

@@ -12,6 +12,16 @@ pub enum ClientId {
     Authenticated(String),
 }
 
+impl ClientId {
+    pub fn anonymous() -> Self {
+        Self::Anonymous
+    }
+
+    pub fn authenticated(id: impl Into<String>) -> Self {
+        Self::Authenticated(id.into())
+    }
+}
+
 impl Default for ClientId {
     fn default() -> Self {
         Self::Anonymous
