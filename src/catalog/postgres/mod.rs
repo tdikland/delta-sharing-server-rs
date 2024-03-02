@@ -9,13 +9,14 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use crate::protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder};
+use crate::{
+    auth::ClientId,
+    protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
+};
 
-use super::{Catalog, CatalogError, ShareInfo};
+use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
 
-/// Share -> Schema -> Table
-/// Permissions
-/// User
+mod convert;
 
 /// Catalog implementation backed by a Postgres database.
 #[derive(Debug)]
@@ -60,10 +61,13 @@ impl PostgresCatalog {
         Ok(())
     }
 
-    async fn select_share_by_name(&self, share_name: &str) -> Result<Option<Share>, sqlx::Error> {
-        sqlx::query(
+    async fn select_share_by_name(
+        &self,
+        share_name: &str,
+    ) -> Result<Option<ShareInfo>, sqlx::Error> {
+        let res: Option<Result<Share, _>> = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 id::text AS share_id,
                 name AS share_name
             FROM share
@@ -73,29 +77,32 @@ impl PostgresCatalog {
         .bind(share_name)
         .fetch_optional(&self.pool)
         .await?
-        .map(TryFrom::try_from)
-        .transpose()
+        .map(TryFrom::try_from);
+
+        todo!()
     }
 
-    async fn select_shares(&self, cursor: &PostgresCursor) -> Result<Vec<Share>, sqlx::Error> {
-        sqlx::query(
-            r#"
-            SELECT 
-                id::text AS share_id,
-                name AS share_name
-            FROM share
-            WHERE id > $1
-            ORDER BY id
-            LIMIT $2;
-            "#,
-        )
-        .bind(cursor.last_seen_id())
-        .bind(cursor.limit())
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .map(TryFrom::try_from)
-        .collect()
+    async fn select_shares(&self, cursor: &PostgresCursor) -> Result<Vec<ShareInfo>, sqlx::Error> {
+        // sqlx::query(
+        //     r#"
+        //     SELECT
+        //         id::text AS share_id,
+        //         name AS share_name
+        //     FROM share
+        //     WHERE id > $1
+        //     ORDER BY id
+        //     LIMIT $2;
+        //     "#,
+        // )
+        // .bind(cursor.last_seen_id())
+        // .bind(cursor.limit())
+        // .fetch_all(&self.pool)
+        // .await?
+        // .into_iter()
+        // .map(TryFrom::try_from)
+        // .collect()
+
+        todo!()
     }
 
     /// Delete a share from the database.
@@ -419,9 +426,9 @@ impl PostgresCursor {
     }
 }
 
-impl TryFrom<ListCursor> for PostgresCursor {
+impl TryFrom<Pagination> for PostgresCursor {
     type Error = &'static str;
-    fn try_from(cursor: ListCursor) -> Result<Self, Self::Error> {
+    fn try_from(cursor: Pagination) -> Result<Self, Self::Error> {
         let last_seen_id = cursor
             .page_token()
             .map(|token| Uuid::parse_str(token).map_err(|_| "invalid page token"))
@@ -483,7 +490,11 @@ impl TryFrom<PgRow> for Table {
 
 #[async_trait]
 impl Catalog for PostgresCatalog {
-    async fn list_shares(&self, cursor: &ListCursor) -> Result<List<Share>, CatalogError> {
+    async fn list_shares(
+        &self,
+        _client_id: &ClientId,
+        cursor: &Pagination,
+    ) -> Result<Page<ShareInfo>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let shares = self.select_shares(&pg_cursor).await?;
@@ -498,22 +509,15 @@ impl Catalog for PostgresCatalog {
             None
         };
 
-        Ok(List::new(shares, next_page_token))
-    }
-
-    async fn get_share(&self, share_name: &str) -> Result<Share, CatalogError> {
-        self.select_share_by_name(share_name)
-            .await?
-            .ok_or(CatalogError::ShareNotFound {
-                share_name: share_name.to_string(),
-            })
+        Ok(Page::new(shares, next_page_token))
     }
 
     async fn list_schemas(
         &self,
+        client_id: &ClientId,
         share_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Schema>, CatalogError> {
+        cursor: &Pagination,
+    ) -> Result<Page<SchemaInfo>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let schemas = self
@@ -530,14 +534,15 @@ impl Catalog for PostgresCatalog {
             None
         };
 
-        Ok(List::new(schemas, next_page_token))
+        Ok(Page::new(schemas, next_page_token))
     }
 
     async fn list_tables_in_share(
         &self,
+        client_id: &ClientId,
         share_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Table>, CatalogError> {
+        cursor: &Pagination,
+    ) -> Result<Page<TableInfo>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
@@ -552,15 +557,16 @@ impl Catalog for PostgresCatalog {
             None
         };
 
-        Ok(List::new(tables, next_page_token))
+        Ok(Page::new(tables, next_page_token))
     }
 
     async fn list_tables_in_schema(
         &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
-        cursor: &ListCursor,
-    ) -> Result<List<Table>, CatalogError> {
+        cursor: &Pagination,
+    ) -> Result<Page<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let tables = self
@@ -577,11 +583,24 @@ impl Catalog for PostgresCatalog {
             None
         };
 
-        Ok(List::new(tables, next_page_token))
+        Ok(Page::new(tables, next_page_token))
+    }
+
+    async fn get_share(
+        &self,
+        client_id: &ClientId,
+        share_name: &str,
+    ) -> Result<ShareInfo, CatalogError> {
+        self.select_share_by_name(share_name)
+            .await?
+            .ok_or(CatalogError::ShareNotFound {
+                share_name: share_name.to_string(),
+            })
     }
 
     async fn get_table(
         &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,

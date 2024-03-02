@@ -104,3 +104,62 @@ pub fn share_exists_check(
         .build()
         .unwrap()
 }
+
+pub fn schema_exists_check(
+    client_id: &ClientId,
+    share_name: &str,
+    schema_name: &str,
+    config: &DynamoCatalogConfig,
+) -> ConditionCheck {
+    let key = convert::to_schema_key(client_id, share_name, schema_name, config);
+    ConditionCheck::builder()
+        .table_name(config.table_name())
+        .set_key(Some(key))
+        .expression_attribute_names("#PK", config.client_id())
+        .expression_attribute_names("#SK", config.securable())
+        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
+        .build()
+        .unwrap()
+}
+
+pub fn empty_share_check(
+    client_id: &ClientId,
+    share_name: &str,
+    config: &DynamoCatalogConfig,
+) -> ConditionCheck {
+    ConditionCheck::builder()
+        .table_name(config.table_name())
+        .key(config.client_id(), AttributeValue::S(client_id.to_string()))
+        .key(
+            config.securable(),
+            AttributeValue::S(format!("SCHEMA#{}.", share_name)),
+        )
+        .expression_attribute_names("#SK", config.securable())
+        .expression_attribute_values(":sk", AttributeValue::S(format!("SCHEMA#{}.", share_name)))
+        .condition_expression("NOT begins_with(#SK, :sk)")
+        .build()
+        .unwrap()
+}
+
+pub fn empty_schema_check(
+    client_id: &ClientId,
+    share_name: &str,
+    schema_name: &str,
+    config: &DynamoCatalogConfig,
+) -> ConditionCheck {
+    ConditionCheck::builder()
+        .table_name(config.table_name())
+        .key(config.client_id(), AttributeValue::S(client_id.to_string()))
+        .key(
+            config.securable(),
+            AttributeValue::S(format!("TABLE#{}.{}.", share_name, schema_name)),
+        )
+        .expression_attribute_names("#SK", config.securable())
+        .expression_attribute_values(
+            ":sk",
+            AttributeValue::S(format!("TABLE#{}.{}.", share_name, schema_name)),
+        )
+        .condition_expression("NOT begins_with(#SK, :sk)")
+        .build()
+        .unwrap()
+}

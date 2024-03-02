@@ -408,6 +408,98 @@ async fn put_table_without_schema_error() {
     assert!(res.is_ok());
 }
 
+#[ignore]
+#[tokio::test]
+async fn delete_schema_with_tables_error() {
+    let docker = Cli::default();
+    let dynamo = DynamoDb::default();
+    let container = docker.run(dynamo);
+
+    let client = init_client(&container).await;
+    let catalog = init_catalog(client, "test-table").await;
+    let client_id = ClientId::anonymous();
+
+    // Writing a table with the parent schema should succeed
+    catalog
+        ._put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
+        .await
+        .unwrap();
+    catalog
+        ._put_schema(
+            client_id.clone(),
+            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+        )
+        .await
+        .unwrap();
+    catalog
+        ._put_table(
+            client_id.clone(),
+            TableInfo::new(
+                "table1".to_owned(),
+                "schema1".to_owned(),
+                "share1".to_owned(),
+                "s3://bucket1/path1".to_owned(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    // Deleting a schema with tables should fail
+    let res = catalog
+        ._delete_schema(&client_id, "schema1", "share1")
+        .await;
+    assert!(res.is_err());
+
+    // Deleting a table should allow the schema to be deleted
+    catalog
+        ._delete_table(&client_id, "table1", "schema1", "share1")
+        .await
+        .unwrap();
+
+    let res = catalog
+        ._delete_schema(&client_id, "schema1", "share1")
+        .await;
+    assert!(res.is_ok());
+}
+
+#[ignore]
+#[tokio::test]
+async fn delete_share_with_schemas_error() {
+    let docker = Cli::default();
+    let dynamo = DynamoDb::default();
+    let container = docker.run(dynamo);
+
+    let client = init_client(&container).await;
+    let catalog = init_catalog(client, "test-table").await;
+    let client_id = ClientId::anonymous();
+
+    // Writing a schema with the parent share should succeed
+    catalog
+        ._put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
+        .await
+        .unwrap();
+    catalog
+        ._put_schema(
+            client_id.clone(),
+            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+        )
+        .await
+        .unwrap();
+
+    // Deleting a share with schemas should fail
+    let res = catalog._delete_share(&client_id, "share1").await;
+    assert!(res.is_err());
+
+    // Deleting a schema should allow the share to be deleted
+    catalog
+        ._delete_schema(&client_id, "schema1", "share1")
+        .await
+        .unwrap();
+
+    let res = catalog._delete_share(&client_id, "share1").await;
+    assert!(res.is_ok());
+}
+
 async fn init_client<I: Image>(container: &Container<'_, I>) -> Client {
     let endpoint_uri = format!("http://127.0.0.1:{}", container.get_host_port_ipv4(8000));
     let shared_config = aws_config::defaults(BehaviorVersion::latest())

@@ -8,7 +8,7 @@ use crate::auth::ClientId;
 
 pub mod dynamo;
 pub mod file;
-// pub mod postgres;
+pub mod postgres;
 
 /// Trait implemented by Share managers that each represent a different backing
 /// store for the shared objects.

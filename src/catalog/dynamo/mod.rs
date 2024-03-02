@@ -6,7 +6,7 @@ use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, Tabl
 use crate::auth::ClientId;
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
-    types::{Put, TransactWriteItem},
+    types::{Delete, Put, TransactWriteItem},
     Client,
 };
 
@@ -117,12 +117,42 @@ impl DynamoCatalog {
     /// Delete a share from the catalog
     pub async fn _delete_share(
         &self,
-        _client_id: &ClientId,
-        _share_name: &str,
+        client_id: &ClientId,
+        share_name: &str,
     ) -> Result<(), CatalogError> {
-        // Check if there are no schemas under this share
-        // Can this be done?
-        todo!()
+        let key = convert::to_share_key(client_id, share_name, &self.config);
+        self.client
+            .transact_write_items()
+            .transact_items(
+                TransactWriteItem::builder()
+                    .condition_check(condition::empty_share_check(
+                        client_id,
+                        share_name,
+                        &self.config,
+                    ))
+                    .build(),
+            )
+            .transact_items(
+                TransactWriteItem::builder()
+                    .delete(
+                        Delete::builder()
+                            .table_name(self.config.table_name())
+                            .set_key(Some(key))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .map_err(|e| {
+                CatalogError::internal(format!(
+                    "delete share from catalog failed; reason: `{:?}`",
+                    e
+                ))
+            })?;
+
+        Ok(())
     }
 
     /// Write a new schema to the catalog
@@ -132,8 +162,7 @@ impl DynamoCatalog {
         schema: SchemaInfo,
     ) -> Result<(), CatalogError> {
         let item = convert::to_schema_item(client_id.clone(), schema.clone(), &self.config);
-        let res = self
-            .client
+        self.client
             .transact_write_items()
             .transact_items(
                 TransactWriteItem::builder()
@@ -161,8 +190,6 @@ impl DynamoCatalog {
                 // TODO: check if the error is a conditional check failed
                 CatalogError::internal(format!("write schema to catalog failed; reason: `{:?}`", e))
             })?;
-
-        println!("{:?}", res);
 
         Ok(())
     }
@@ -224,13 +251,47 @@ impl DynamoCatalog {
 
     pub async fn _delete_schema(
         &self,
-        _client_id: &ClientId,
-        _share_name: &str,
-        _schema_name: &str,
+        client_id: &ClientId,
+        share_name: &str,
+        schema_name: &str,
     ) -> Result<(), CatalogError> {
-        // Check if there are no tables under this schema
-        // Can this be done?
-        todo!()
+        let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
+        let r = self
+            .client
+            .transact_write_items()
+            .transact_items(
+                TransactWriteItem::builder()
+                    .condition_check(condition::empty_schema_check(
+                        client_id,
+                        share_name,
+                        schema_name,
+                        &self.config,
+                    ))
+                    .build(),
+            )
+            .transact_items(
+                TransactWriteItem::builder()
+                    .delete(
+                        Delete::builder()
+                            .table_name(self.config.table_name())
+                            .set_key(Some(key))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await
+            .map_err(|e| {
+                CatalogError::internal(format!(
+                    "delete share from catalog failed; reason: `{:?}`",
+                    e
+                ))
+            })?;
+
+        println!("{:?}", r);
+
+        Ok(())
     }
 
     /// Write a new table to the catalog
@@ -239,14 +300,34 @@ impl DynamoCatalog {
         client_id: ClientId,
         table: TableInfo,
     ) -> Result<(), CatalogError> {
-        let item = convert::to_table_item(client_id, table, &self.config);
+        let item = convert::to_table_item(client_id.clone(), table.clone(), &self.config);
         self.client
-            .put_item()
-            .table_name(self.config.table_name())
-            .set_item(Some(item))
+            .transact_write_items()
+            .transact_items(
+                TransactWriteItem::builder()
+                    .condition_check(condition::schema_exists_check(
+                        &client_id,
+                        table.share_name(),
+                        table.schema_name(),
+                        &self.config,
+                    ))
+                    .build(),
+            )
+            .transact_items(
+                TransactWriteItem::builder()
+                    .put(
+                        Put::builder()
+                            .table_name(self.config.table_name())
+                            .set_item(Some(item))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build(),
+            )
             .send()
             .await
             .map_err(|e| {
+                // TODO: check if the error is a conditional check failed
                 CatalogError::internal(format!("write table to catalog failed; reason: `{:?}`", e))
             })?;
 
