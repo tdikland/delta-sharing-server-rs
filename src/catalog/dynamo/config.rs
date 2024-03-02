@@ -20,9 +20,9 @@ pub struct DynamoCatalogConfig {
 }
 
 impl DynamoCatalogConfig {
-    pub fn new(table_name: String) -> Self {
+    pub fn new(table_name: impl Into<String>) -> Self {
         Self {
-            table_name,
+            table_name: table_name.into(),
             client_id_attr_name: None,
             securable_attr_name: None,
             share_id_attr_name: None,

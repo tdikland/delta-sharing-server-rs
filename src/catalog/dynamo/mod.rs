@@ -1,29 +1,21 @@
 //! DynamoDB based implementation of the Catalog trait
 
+use self::{condition::ConditionExt, pagination::PaginationExt};
+
 use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
 use crate::auth::ClientId;
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
-    types::{AttributeValue, ConditionCheck, Put, TransactWriteItem},
+    types::{Put, TransactWriteItem},
     Client,
 };
-use base64::{engine::general_purpose, Engine};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-const DYNAMO_ATTRIBUTE_PK: &'static str = "PK";
-const DYNAMO_ATTRIBUTE_SK: &'static str = "SK";
-const DYNAMO_ATTRIBUTE_SHARE_ID: &'static str = "share_id";
-const DYNAMO_ATTRIBUTE_SHARE_NAME: &'static str = "share_name";
-const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &'static str = "schema_name";
-const DYNAMO_ATTRIBUTE_TABLE_ID: &'static str = "table_id";
-const DYNAMO_ATTRIBUTE_TABLE_NAME: &'static str = "table_name";
-const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &'static str = "table_storage_location";
-
+mod condition;
 mod config;
+mod convert;
 mod pagination;
 
-use config::DynamoCatalogConfig;
+pub use config::DynamoCatalogConfig;
 
 /// Catalog implementation backed by AWS DynamoDB
 ///
@@ -49,39 +41,25 @@ pub struct DynamoCatalog {
 impl DynamoCatalog {
     /// Create a new instance of the DynamoCatalog
     pub fn new(client: Client, config: DynamoCatalogConfig) -> Self {
-        let c = config::DynamoCatalogConfig::new("test-table".to_owned());
         Self { client, config }
     }
 
     /// Write a new share to the catalog
-    pub async fn put_share(&self, client_id: String, share: ShareInfo) -> Result<(), CatalogError> {
-        let mut builder = self
-            .client
+    pub async fn _put_share(
+        &self,
+        client_id: ClientId,
+        share: ShareInfo,
+    ) -> Result<(), CatalogError> {
+        let share_item = convert::to_share_item(client_id, share, &self.config);
+        self.client
             .put_item()
             .table_name(self.config.table_name())
-            .item(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id))
-            .item(
-                DYNAMO_ATTRIBUTE_SK,
-                AttributeValue::S(format!("SHARE#{}", share.name())),
-            )
-            .item(
-                DYNAMO_ATTRIBUTE_SHARE_NAME,
-                AttributeValue::S(share.name().to_owned()),
-            );
-
-        if let Some(share_id) = share.id() {
-            builder = builder.item(
-                DYNAMO_ATTRIBUTE_SHARE_ID,
-                AttributeValue::S(share_id.to_owned()),
-            );
-        }
-
-        let _result = builder.send().await.map_err(|e| {
-            CatalogError::internal(format!(
-                "write share to catalog failed; reason: `{}`",
-                e.to_string()
-            ))
-        })?;
+            .set_item(Some(share_item))
+            .send()
+            .await
+            .map_err(|e| {
+                CatalogError::internal(format!("write share to catalog failed; reason: `{:?}`", e))
+            })?;
 
         Ok(())
     }
@@ -89,95 +67,81 @@ impl DynamoCatalog {
     /// Read a share from the catalog
     pub async fn _get_share(
         &self,
-        client_id: &str,
+        client_id: &ClientId,
         share_name: &str,
     ) -> Result<ShareInfo, CatalogError> {
-        let result = self
+        let key = convert::to_share_key(client_id, share_name, &self.config);
+        let res = self
             .client
             .get_item()
             .table_name(self.config.table_name())
-            .key("PK", AttributeValue::S(client_id.to_owned()))
-            .key("SK", AttributeValue::S(format!("SHARE#{}", share_name)))
+            .set_key(Some(key))
             .send()
             .await
             .map_err(|e| {
-                println!("{e:?}");
-                CatalogError::internal(e.to_string())
+                CatalogError::internal(format!("read share from catalog failed; reason: `{:?}`", e))
             })?;
 
-        if let Some(item) = result.item() {
-            Ok(item.try_into()?)
+        if let Some(item) = res.item() {
+            let share_info = convert::to_share_info(item, &self.config)?;
+            Ok(share_info)
         } else {
             Err(CatalogError::share_not_found(share_name))
         }
     }
 
     /// List all shares in the catalog
-    pub async fn query_shares(
+    pub async fn _query_shares(
         &self,
-        client_id: String,
+        client_id: &ClientId,
         pagination: &Pagination,
     ) -> Result<Page<ShareInfo>, CatalogError> {
-        let mut query = self
+        let res = self
             .client
             .query()
             .table_name(self.config.table_name())
-            .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
-            .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
-            .expression_attribute_values(":pk", AttributeValue::S(client_id))
-            .expression_attribute_values(":sk", AttributeValue::S("SHARE".to_owned()))
-            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
-
-        if let Some(max_results) = pagination.max_results() {
-            query = query.limit(max_results as i32);
-        }
-
-        if let Some(token) = pagination.page_token() {
-            query = query.set_exclusive_start_key(Some(token_to_key(token)));
-        }
-
-        let result = query
+            .shares_for_client_cond(client_id, &self.config)
+            .with_pagination(pagination)
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!(
+                    "list shares from catalog failed; reason: `{:?}`",
+                    e
+                ))
+            })?;
 
-        let shares = result
-            .items()
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<ShareInfo>, CatalogError>>()?;
+        convert::to_share_info_page(res.items(), res.last_evaluated_key(), &self.config)
+    }
 
-        Ok(Page::new(
-            shares,
-            result.last_evaluated_key().map(key_to_token),
-        ))
+    /// Delete a share from the catalog
+    pub async fn _delete_share(
+        &self,
+        _client_id: &ClientId,
+        _share_name: &str,
+    ) -> Result<(), CatalogError> {
+        // Check if there are no schemas under this share
+        // Can this be done?
+        todo!()
     }
 
     /// Write a new schema to the catalog
-    pub async fn put_schema(
+    pub async fn _put_schema(
         &self,
-        client_id: String,
+        client_id: ClientId,
         schema: SchemaInfo,
     ) -> Result<(), CatalogError> {
-        let trx = self
+        let item = convert::to_schema_item(client_id.clone(), schema.clone(), &self.config);
+        let res = self
             .client
             .transact_write_items()
             .transact_items(
                 TransactWriteItem::builder()
-                    .condition_check(
-                        ConditionCheck::builder()
-                            .table_name(self.config.table_name())
-                            .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.clone()))
-                            .key(
-                                DYNAMO_ATTRIBUTE_SK,
-                                AttributeValue::S(format!("SHARE#{}", schema.share_name())),
-                            )
-                            .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
-                            .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
-                            .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
-                            .build()
-                            .unwrap(),
-                    )
+                    .condition_check(condition::share_exists_check(
+                        &client_id,
+                        schema.share_name(),
+                        &self.config,
+                    ))
                     .build(),
             )
             .transact_items(
@@ -185,162 +149,106 @@ impl DynamoCatalog {
                     .put(
                         Put::builder()
                             .table_name(self.config.table_name())
-                            .item("PK", AttributeValue::S(client_id.clone()))
-                            .item(
-                                "SK",
-                                AttributeValue::S(format!(
-                                    "SCHEMA#{}.{}",
-                                    schema.share_name(),
-                                    schema.name()
-                                )),
-                            )
-                            .item(
-                                DYNAMO_ATTRIBUTE_SHARE_NAME,
-                                AttributeValue::S(schema.share_name().to_owned()),
-                            )
-                            .item(
-                                DYNAMO_ATTRIBUTE_SCHEMA_NAME,
-                                AttributeValue::S(schema.name().to_owned()),
-                            )
+                            .set_item(Some(item))
                             .build()
                             .unwrap(),
                     )
                     .build(),
-            );
+            )
+            .send()
+            .await
+            .map_err(|e| {
+                // TODO: check if the error is a conditional check failed
+                CatalogError::internal(format!("write schema to catalog failed; reason: `{:?}`", e))
+            })?;
 
-        let _result = trx.send().await.map_err(|e| {
-            // println!("{:?}", e);
-            // let service_error = e.into_service_error();
-            // match service_error {
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::IdempotentParameterMismatchException(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::InternalServerError(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::InvalidEndpointException(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::ProvisionedThroughputExceededException(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::RequestLimitExceeded(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::ResourceNotFoundException(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::TransactionCanceledException(e) => println!("{:?}", e),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::TransactionInProgressException(_) => todo!(),
-            //     aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::Unhandled(_) => todo!(),
-            //     _ => todo!(),
-            // };
-
-            CatalogError::internal(String::from("fck"))
-        })?;
-
-        println!("result: {:?}", _result);
+        println!("{:?}", res);
 
         Ok(())
     }
 
     /// Read a schema from the catalog
-    pub async fn get_schema(
+    pub async fn _get_schema(
         &self,
-        client_id: &str,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
     ) -> Result<SchemaInfo, CatalogError> {
-        let result = self
+        let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
+        let res = self
             .client
             .get_item()
             .table_name(self.config.table_name())
-            .key("PK", AttributeValue::S(client_id.to_owned()))
-            .key(
-                "SK",
-                AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema_name)),
-            )
+            .set_key(Some(key))
             .send()
             .await
             .map_err(|e| {
-                println!("{:?}", e);
-                CatalogError::internal(e.to_string())
+                CatalogError::internal(format!(
+                    "read schema from catalog failed; reason: `{:?}`",
+                    e
+                ))
             })?;
 
-        if let Some(item) = result.item() {
-            Ok(item.try_into()?)
+        if let Some(item) = res.item() {
+            let schema_info = convert::to_schema_info(item, &self.config)?;
+            Ok(schema_info)
         } else {
             Err(CatalogError::schema_not_found(share_name, schema_name))
         }
     }
 
     /// List all schemas in a share
-    pub async fn query_schemas(
+    pub async fn _query_schemas(
         &self,
-        client_id: String,
-        share_name: String,
+        client_id: &ClientId,
+        share_name: &str,
         pagination: &Pagination,
     ) -> Result<Page<SchemaInfo>, CatalogError> {
-        let mut query = self
+        let res = self
             .client
             .query()
             .table_name(self.config.table_name())
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(":pk", AttributeValue::S(client_id))
-            .expression_attribute_values(
-                ":sk",
-                AttributeValue::S(format!("SCHEMA#{}.", share_name)),
-            )
-            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
-
-        if let Some(max_results) = pagination.max_results() {
-            query = query.limit(max_results as i32);
-        }
-
-        if let Some(token) = pagination.page_token() {
-            query = query.set_exclusive_start_key(Some(token_to_key(token)));
-        }
-
-        let result = query
+            .schemas_for_client_share_cond(client_id, share_name, &self.config)
+            .with_pagination(pagination)
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!(
+                    "list schemas from catalog failed; reason: `{:?}`",
+                    e
+                ))
+            })?;
 
-        let schemas = result
-            .items()
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<SchemaInfo>, CatalogError>>()?;
+        convert::to_schema_info_page(res.items(), res.last_evaluated_key(), &self.config)
+    }
 
-        Ok(Page::new(
-            schemas,
-            result.last_evaluated_key().map(key_to_token),
-        ))
+    pub async fn _delete_schema(
+        &self,
+        _client_id: &ClientId,
+        _share_name: &str,
+        _schema_name: &str,
+    ) -> Result<(), CatalogError> {
+        // Check if there are no tables under this schema
+        // Can this be done?
+        todo!()
     }
 
     /// Write a new table to the catalog
-    pub async fn put_table(&self, client_id: String, table: TableInfo) -> Result<(), CatalogError> {
-        let builder = self
-            .client
+    pub async fn _put_table(
+        &self,
+        client_id: ClientId,
+        table: TableInfo,
+    ) -> Result<(), CatalogError> {
+        let item = convert::to_table_item(client_id, table, &self.config);
+        self.client
             .put_item()
             .table_name(self.config.table_name())
-            .item("PK", AttributeValue::S(client_id))
-            .item(
-                "SK",
-                AttributeValue::S(format!(
-                    "TABLE#{}.{}.{}",
-                    table.share_name(),
-                    table.schema_name(),
-                    table.name()
-                )),
-            )
-            .item("table_name", AttributeValue::S(table.name().to_owned()))
-            .item(
-                "schema_name",
-                AttributeValue::S(table.schema_name().to_owned()),
-            )
-            .item(
-                "share_name",
-                AttributeValue::S(table.share_name().to_owned()),
-            )
-            .item(
-                "storage_location",
-                AttributeValue::S(table.storage_path().to_owned()),
-            );
-
-        let _result = builder
+            .set_item(Some(item))
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!("write table to catalog failed; reason: `{:?}`", e))
+            })?;
 
         Ok(())
     }
@@ -348,268 +256,91 @@ impl DynamoCatalog {
     /// Read a table from the catalog
     pub async fn _get_table(
         &self,
-        client_id: String,
-        share_name: String,
-        schema_name: String,
-        table_name: String,
+        client_id: &ClientId,
+        share_name: &str,
+        schema_name: &str,
+        table_name: &str,
     ) -> Result<TableInfo, CatalogError> {
-        let result = self
+        let key =
+            convert::to_table_key(client_id, share_name, schema_name, table_name, &self.config);
+        let res = self
             .client
             .get_item()
             .table_name(self.config.table_name())
-            .key("PK", AttributeValue::S(client_id))
-            .key(
-                "SK",
-                AttributeValue::S(format!(
-                    "TABLE#{}.{}.{}",
-                    share_name, schema_name, table_name
-                )),
-            )
+            .set_key(Some(key))
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!("read table to catalog failed; reason: `{:?}`", e))
+            })?;
 
-        if let Some(item) = result.item() {
-            Ok(item.try_into()?)
+        if let Some(item) = res.item() {
+            let table_info = convert::to_table_info(item, &self.config)?;
+            Ok(table_info)
         } else {
             Err(CatalogError::table_not_found(
-                &share_name,
-                &schema_name,
-                &table_name,
+                share_name,
+                schema_name,
+                table_name,
             ))
         }
     }
 
     /// List all tables in a share
-    pub async fn query_tables_in_share(
+    pub async fn _query_tables_in_share(
         &self,
-        client_id: String,
-        share_name: String,
+        client_id: &ClientId,
+        share_name: &str,
         pagination: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        let mut query = self
+        let res = self
             .client
             .query()
             .table_name(self.config.table_name())
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(":pk", AttributeValue::S(client_id))
-            .expression_attribute_values(":sk", AttributeValue::S(format!("TABLE#{}.", share_name)))
-            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
-
-        if let Some(max_results) = pagination.max_results() {
-            query = query.limit(max_results as i32);
-        }
-
-        if let Some(token) = pagination.page_token() {
-            query = query.set_exclusive_start_key(Some(token_to_key(token)));
-        }
-
-        let result = query
+            .tables_for_client_share_cond(client_id, share_name, &self.config)
+            .with_pagination(pagination)
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!("list tables in catalog failed; reason: `{:?}`", e))
+            })?;
 
-        let tables = result
-            .items()
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
-
-        Ok(Page::new(
-            tables,
-            result.last_evaluated_key().map(key_to_token),
-        ))
+        convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
     }
 
     /// List all tables in a schema
-    pub async fn query_tables_in_schema(
+    pub async fn _query_tables_in_schema(
         &self,
-        client_id: String,
-        share_name: String,
-        schema_name: String,
+        client_id: &ClientId,
+        share_name: &str,
+        schema_name: &str,
         pagination: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        let mut query = self
+        let res = self
             .client
             .query()
             .table_name(self.config.table_name())
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(":pk", AttributeValue::S(client_id))
-            .expression_attribute_values(
-                ":sk",
-                AttributeValue::S(format!("TABLE#{}.{}.", share_name, schema_name)),
-            )
-            .key_condition_expression("#PK = :pk AND begins_with(#SK, :sk)");
-
-        if let Some(max_results) = pagination.max_results() {
-            query = query.limit(max_results as i32);
-        }
-
-        if let Some(token) = pagination.page_token() {
-            query = query.set_exclusive_start_key(Some(token_to_key(token)));
-        }
-
-        let result = query
+            .tables_for_client_schema_cond(&client_id, &share_name, &schema_name, &self.config)
+            .with_pagination(pagination)
             .send()
             .await
-            .map_err(|e| CatalogError::internal(e.to_string()))?;
+            .map_err(|e| {
+                CatalogError::internal(format!("list tables in catalog failed; reason: `{:?}`", e))
+            })?;
 
-        let tables = result
-            .items()
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
-
-        Ok(Page::new(
-            tables,
-            result.last_evaluated_key().map(key_to_token),
-        ))
+        convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
     }
-}
 
-fn condition_share_exists(
-    table_name: &str,
-    client_id: &str,
-    share_name: &str,
-) -> Result<ConditionCheck, CatalogError> {
-    ConditionCheck::builder()
-        .table_name(table_name)
-        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
-        .key(
-            DYNAMO_ATTRIBUTE_SK,
-            AttributeValue::S(format!("SHARE#{}", share_name)),
-        )
-        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
-        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
-        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
-        .build()
-        .map_err(|e| CatalogError::internal(e.to_string()))
-}
-
-fn condition_schema_exists(
-    table_name: &str,
-    client_id: &str,
-    share_name: &str,
-    schema_name: &str,
-) -> Result<ConditionCheck, CatalogError> {
-    ConditionCheck::builder()
-        .table_name(table_name)
-        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
-        .key(
-            DYNAMO_ATTRIBUTE_SK,
-            AttributeValue::S(format!("SCHEMA#{}.{}", share_name, schema_name)),
-        )
-        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
-        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
-        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
-        .build()
-        .map_err(|e| CatalogError::internal(e.to_string()))
-}
-
-fn condition_table_exists(
-    table_name: &str,
-    client_id: &str,
-    share_name: &str,
-    schema_name: &str,
-    tname: &str,
-) -> Result<ConditionCheck, CatalogError> {
-    ConditionCheck::builder()
-        .table_name(table_name)
-        .key(DYNAMO_ATTRIBUTE_PK, AttributeValue::S(client_id.to_owned()))
-        .key(
-            DYNAMO_ATTRIBUTE_SK,
-            AttributeValue::S(format!("TABLE#{}.{}.{}", share_name, schema_name, tname)),
-        )
-        .expression_attribute_names("#PK", DYNAMO_ATTRIBUTE_PK)
-        .expression_attribute_names("#SK", DYNAMO_ATTRIBUTE_SK)
-        .condition_expression("attribute_exists(#PK) AND attribute_exists(#SK)")
-        .build()
-        .map_err(|e| CatalogError::internal(e.to_string()))
-}
-
-/// A struct to represent the primary key of the DynamoDB table
-#[derive(Serialize, Deserialize)]
-struct DynamoKey {
-    pk: String,
-    sk: String,
-}
-
-/// Convert a pagination token to a DynamoDB key
-fn token_to_key(token: &str) -> HashMap<String, AttributeValue> {
-    let decoded_token = general_purpose::URL_SAFE.decode(token).unwrap();
-    let key: DynamoKey = serde_json::from_slice(&decoded_token).unwrap();
-    let map = HashMap::from_iter([
-        (String::from("PK"), AttributeValue::S(key.pk)),
-        (String::from("SK"), AttributeValue::S(key.sk)),
-    ]);
-    map
-}
-
-/// Convert a DynamoDB key to a pagination token
-fn key_to_token(key: &HashMap<String, AttributeValue>) -> String {
-    let dynamo_key = DynamoKey {
-        pk: key.get("PK").unwrap().as_s().unwrap().to_owned(),
-        sk: key.get("SK").unwrap().as_s().unwrap().to_owned(),
-    };
-    let json = serde_json::to_vec(&dynamo_key).unwrap();
-    general_purpose::URL_SAFE.encode(&json)
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for ShareInfo {
-    type Error = CatalogError;
-
-    fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let share_name = extract_from_item(value, "share_name")?;
-        let share_id = extract_from_item_opt(value, "share_id");
-
-        Ok(ShareInfo::new(share_name, share_id))
+    pub async fn _delete_table(
+        &self,
+        _client_id: &ClientId,
+        _share_name: &str,
+        _schema_name: &str,
+        _table_name: &str,
+    ) -> Result<(), CatalogError> {
+        // Can this be done?
+        todo!()
     }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for SchemaInfo {
-    type Error = CatalogError;
-
-    fn try_from(value: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let name = extract_from_item(value, DYNAMO_ATTRIBUTE_SCHEMA_NAME)?;
-        let share_name = extract_from_item(value, DYNAMO_ATTRIBUTE_SHARE_NAME)?;
-
-        Ok(Self::new(name, share_name))
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for TableInfo {
-    type Error = CatalogError;
-
-    fn try_from(item: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        let name = extract_from_item(item, "table_name")?;
-        let schema_name = extract_from_item(item, "schema_name")?;
-        let share_name = extract_from_item(item, "share_name")?;
-        let storage_location = extract_from_item(item, "storage_location")?;
-        let _id = extract_from_item_opt(item, "table_id");
-        let _share_id = extract_from_item_opt(item, "share_id");
-
-        Ok(Self::new(name, schema_name, share_name, storage_location))
-    }
-}
-
-fn extract_from_item(
-    item: &HashMap<String, AttributeValue>,
-    key: &str,
-) -> Result<String, CatalogError> {
-    item.get(key)
-        .ok_or(CatalogError::internal(format!(
-            "attribute `{}` not found in item",
-            key
-        )))?
-        .as_s()
-        .map_err(|_| CatalogError::internal(format!("attribute `{}` was not a string", key)))
-        .cloned()
-}
-
-fn extract_from_item_opt(item: &HashMap<String, AttributeValue>, key: &str) -> Option<String> {
-    item.get(key).and_then(|v| v.as_s().ok().cloned())
 }
 
 #[async_trait]
@@ -619,26 +350,25 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         pagination: &Pagination,
     ) -> Result<Page<ShareInfo>, CatalogError> {
-        self.query_shares(client_id.to_string(), pagination).await
+        self._query_shares(client_id, pagination).await
     }
 
     async fn list_schemas(
         &self,
         client_id: &ClientId,
         share_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<SchemaInfo>, CatalogError> {
-        self.query_schemas(client_id.to_string(), share_name.to_owned(), cursor)
-            .await
+        self._query_schemas(client_id, share_name, pagination).await
     }
 
     async fn list_tables_in_share(
         &self,
         client_id: &ClientId,
         share_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        self.query_tables_in_share(client_id.to_string(), share_name.to_owned(), cursor)
+        self._query_tables_in_share(client_id, share_name, pagination)
             .await
     }
 
@@ -647,15 +377,10 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        self.query_tables_in_schema(
-            client_id.to_string(),
-            share_name.to_owned(),
-            schema_name.to_owned(),
-            cursor,
-        )
-        .await
+        self._query_tables_in_schema(client_id, share_name, schema_name, pagination)
+            .await
     }
 
     async fn get_share(
@@ -663,7 +388,7 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
     ) -> Result<ShareInfo, CatalogError> {
-        self._get_share(&client_id.to_string(), share_name).await
+        self._get_share(client_id, share_name).await
     }
 
     async fn get_table(
@@ -673,13 +398,8 @@ impl Catalog for DynamoCatalog {
         schema_name: &str,
         table_name: &str,
     ) -> Result<TableInfo, CatalogError> {
-        self._get_table(
-            client_id.to_string(),
-            share_name.to_owned(),
-            schema_name.to_owned(),
-            table_name.to_owned(),
-        )
-        .await
+        self._get_table(client_id, share_name, schema_name, table_name)
+            .await
     }
 }
 
@@ -695,32 +415,32 @@ mod test {
     use testcontainers::{clients::Cli, Container, Image};
     use testcontainers_modules::dynamodb_local::DynamoDb;
 
-    #[tokio::test]
-    async fn test_parse_share_info() {
-        let mut item = HashMap::new();
-        item.insert(
-            "share_name".to_owned(),
-            AttributeValue::S("test-share".to_owned()),
-        );
+    // #[tokio::test]
+    // async fn test_parse_share_info() {
+    //     let mut item = HashMap::new();
+    //     item.insert(
+    //         "share_name".to_owned(),
+    //         AttributeValue::S("test-share".to_owned()),
+    //     );
 
-        let share_info: ShareInfo = (&item).try_into().unwrap();
-        assert_eq!(share_info.name(), "test-share");
-    }
+    //     let share_info: ShareInfo = (&item).try_into().unwrap();
+    //     assert_eq!(share_info.name(), "test-share");
+    // }
 
-    #[tokio::test]
-    async fn test_parse_schema_info() {
-        let mut item = HashMap::new();
-        item.insert(
-            "schema_name".to_owned(),
-            AttributeValue::S("test-schema".to_owned()),
-        );
-        item.insert(
-            "share_name".to_owned(),
-            AttributeValue::S("test-share".to_owned()),
-        );
+    // #[tokio::test]
+    // async fn test_parse_schema_info() {
+    //     let mut item = HashMap::new();
+    //     item.insert(
+    //         "schema_name".to_owned(),
+    //         AttributeValue::S("test-schema".to_owned()),
+    //     );
+    //     item.insert(
+    //         "share_name".to_owned(),
+    //         AttributeValue::S("test-share".to_owned()),
+    //     );
 
-        let schema_info: SchemaInfo = (&item).try_into().unwrap();
-        assert_eq!(schema_info.name(), "test-schema");
-        assert_eq!(schema_info.share_name(), "test-share");
-    }
+    //     let schema_info: SchemaInfo = (&item).try_into().unwrap();
+    //     assert_eq!(schema_info.name(), "test-schema");
+    //     assert_eq!(schema_info.share_name(), "test-share");
+    // }
 }
