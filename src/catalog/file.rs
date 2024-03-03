@@ -3,10 +3,7 @@
 //! TODO: implement pagination
 //! TODO: implement multiple formats (JSON, YAML, TOML)
 
-use std::{
-    fs::File,
-    path::{PathBuf},
-};
+use std::{fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 

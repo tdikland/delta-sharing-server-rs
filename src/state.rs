@@ -189,7 +189,6 @@ mod test {
         reader::MockTableReader,
     };
     use insta::assert_json_snapshot;
-    
 
     #[tokio::test]
     async fn list_shares() {
