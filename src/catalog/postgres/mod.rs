@@ -1,25 +1,18 @@
 //! ShareReader implementation leveraging Postgres as backing store.
 
-use std::borrow::{Borrow, Cow};
+#![warn(missing_docs)]
 
 use async_trait::async_trait;
-use aws_config::imds::client;
-use sqlx::{
-    postgres::{PgPoolOptions, PgRow},
-    PgPool, Row,
-};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 
-use crate::{
-    auth::ClientId,
-    protocol::securable::{Schema, SchemaBuilder, Share, ShareBuilder, Table, TableBuilder},
-};
+use crate::auth::ClientId;
+
+use self::model::{ClientModel, ShareInfoModel, ShareModel};
 
 use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
 
-mod convert;
 mod model;
-mod pagination;
 
 /// Catalog implementation backed by a Postgres database.
 #[derive(Debug)]
@@ -28,7 +21,7 @@ pub struct PostgresCatalog {
 }
 
 impl PostgresCatalog {
-    /// Create a new PostgresShareReader.
+    /// Create a new PostgresCatalog.
     pub async fn new(connection_url: &str) -> Self {
         let pool = PgPoolOptions::new()
             .max_connections(500)
@@ -39,7 +32,7 @@ impl PostgresCatalog {
         Self { pool }
     }
 
-    /// Create a new PostgresShareReader from an existing PgPool.
+    /// Create a new PostgresCatalog from an existing PgPool.
     pub fn from_pool(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -49,21 +42,67 @@ impl PostgresCatalog {
         &self.pool
     }
 
-    pub async fn insert_client(&self, client_id: ClientId) -> Result<model::Client, sqlx::Error> {
-        let client: model::Client =
-            sqlx::query_as("INSERT INTO client (name) VALUES ($1) RETURNING *;")
-                .bind(client_id.to_string())
-                .fetch_one(&self.pool)
-                .await?;
+    /// Insert a new client into the database.
+    ///
+    /// Clients are used to represent users or services that have access to the
+    /// shared objects in the catalog. The client name is used to uniquely
+    /// identify the client.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    ///
+    /// let client = catalog.insert_client(&client_id).await.unwrap();
+    /// assert_eq!(client.name, "foo");
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn insert_client<S>(&self, client_name: S) -> Result<ClientModel, sqlx::Error>
+    where
+        S: AsRef<str>,
+    {
+        let client = sqlx::query_as("INSERT INTO client (name) VALUES ($1) RETURNING *;")
+            .bind(client_name.as_ref())
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(client)
     }
 
-    pub async fn select_client_by_name(
+    /// Select a client by name.
+    ///
+    /// Clients are used to represent users or services that have access to the
+    /// shared objects in the catalog. The [`ClientId`] is used to uniquely identify
+    /// the client. The client name is also unique accross all clients. The
+    /// function returns `None` if no client with the given name exists.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let res = async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    ///
+    /// let client = catalog.select_client_by_name(&client_id).await.unwrap();
+    /// assert_eq!(client.unwrap().name, "foo");
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn select_client_by_name<S>(
         &self,
-        client_id: &ClientId,
-    ) -> Result<Option<model::Client>, sqlx::Error> {
-        let client: Option<model::Client> = sqlx::query_as(
+        client_name: S,
+    ) -> Result<Option<model::ClientModel>, sqlx::Error>
+    where
+        S: AsRef<str>,
+    {
+        let client = sqlx::query_as(
             r#"
             SELECT
                 id,
@@ -72,30 +111,237 @@ impl PostgresCatalog {
             WHERE name = $1;
             "#,
         )
-        .bind(client_id.to_string())
+        .bind(client_name.as_ref())
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(client)
     }
 
+    /// Delete a client from the database.
+    ///
+    /// Clients are used to represent users or services that have access to the
+    /// shared objects in the catalog. The [`ClientId`] is used to uniquely identify
+    /// the client.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    ///
+    /// let client = catalog.select_client_by_name(&client_id).await.unwrap();
+    /// let result = catalog.delete_client(&client.unwrap().id).await;
+    /// assert!(result.is_ok());
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn delete_client(&self, id: &Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM client WHERE id = $1;")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     /// Insert a new share into the database.
-    pub async fn insert_share(&self, share: ShareInfo) -> Result<model::Share, sqlx::Error> {
-        let share: model::Share =
-            sqlx::query_as("INSERT INTO share (name) VALUES ($1) RETURNING *;")
-                .bind(share.name())
-                .fetch_one(&self.pool)
-                .await?;
+    ///
+    /// Shares are used to represent a collection of schemas and tables that are
+    /// shared between clients. The share name is used to uniquely identify the
+    /// share. The function returns a [`ShareModel`] object representing the
+    /// newly created share.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    ///
+    /// let share = catalog.insert_share("foo").await.unwrap();
+    /// assert_eq!(share.name, "foo");
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn insert_share(&self, share_name: &str) -> Result<ShareModel, sqlx::Error> {
+        let share = sqlx::query_as("INSERT INTO share (name) VALUES ($1) RETURNING *;")
+            .bind(share_name)
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(share)
     }
 
+    /// Select a share by name.
+    ///
+    /// Shares are used to represent a collection of schemas and tables that are
+    /// shared between clients. The share name is used to uniquely identify the
+    /// share. The function returns `None` if no share with the given name exists.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client = ClientId::known("foo");
+    ///
+    /// let share = catalog.select_share_by_name(&client, "foo").await.unwrap();
+    /// assert!(share.is_some());
+    /// assert_eq!(share.unwrap().name, "foo");
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn select_share_by_name<S>(
+        &self,
+        client_name: S,
+        share_name: &str,
+    ) -> Result<Option<ShareInfoModel>, sqlx::Error>
+    where
+        S: AsRef<str>,
+    {
+        let share = sqlx::query_as(
+            r#"
+        WITH acl AS (
+            SELECT
+                s.share_id
+            FROM client c
+            JOIN share_acl s ON s.client_id = c.id
+            WHERE c.name = $1
+        )
+        SELECT
+            s.id,
+            s.name
+        FROM share s
+        JOIN acl ON acl.share_id = s.id
+        WHERE s.name = $2;
+        "#,
+        )
+        .bind(client_name.as_ref())
+        .bind(share_name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(share)
+    }
+
+    /// Select all shares that a client has access to.
+    ///
+    /// Shares are used to represent a collection of schemas and tables that are
+    /// shared between clients. The share name is used to uniquely identify the
+    /// share. The function returns a list of [`ShareInfoModel`] objects representing
+    /// the shares that the client has access to.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::{PostgresCatalog, PostgresCursor};
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client = ClientId::known("foo");
+    ///
+    /// let shares = catalog.select_shares(&client, &PostgresCursor::default()).await.unwrap();
+    /// assert_eq!(shares.len(), 1);
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn select_shares<S>(
+        &self,
+        client_name: S,
+        cursor: &PostgresCursor,
+    ) -> Result<Vec<ShareInfoModel>, sqlx::Error>
+    where
+        S: AsRef<str>,
+    {
+        let shares = sqlx::query_as(
+            r#"
+            WITH acl AS (
+                SELECT
+                    s.share_id
+                FROM client c
+                JOIN share_acl s ON s.client_id = c.id
+                WHERE c.name = $1
+            )
+            SELECT
+                s.id,
+                s.name
+            FROM share s
+            JOIN acl ON acl.share_id = s.id
+            WHERE s.id > $2
+            ORDER BY s.id ASC
+            LIMIT $3;
+            "#,
+        )
+        .bind(client_name.as_ref())
+        .bind(cursor.last_seen_id())
+        .bind(cursor.limit())
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(shares)
+    }
+
+    /// Delete a share from the database.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    ///
+    /// let share = catalog.select_share_by_name(&client_id, "bar").await.unwrap().unwrap();
+    /// let result = catalog.delete_share(&share.id).await;
+    /// assert!(result.is_ok());
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn delete_share(&self, id: &Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM share WHERE id = $1;")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Grant a client access to a share
+    ///
+    /// By default clients have no access to any shares. This function grants a
+    /// client access to a share. The function returns a [`ShareAclModel`] object
+    /// representing the newly created access control list entry.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    /// let client = catalog.insert_client(&client_id).await.unwrap();
+    /// let share = catalog.insert_share("bar").await.unwrap();
+    ///
+    /// let acl = catalog.grant_access_to_share(&client.id, &share.id).await.unwrap();
+    /// assert_eq!(acl.client_id, client.id);
+    /// assert_eq!(acl.share_id, share.id);
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
     pub async fn grant_access_to_share(
         &self,
         client_id: &Uuid,
         share_id: &Uuid,
-    ) -> Result<model::ShareAcl, sqlx::Error> {
-        let acl: model::ShareAcl = sqlx::query_as(
+    ) -> Result<model::ShareAclModel, sqlx::Error> {
+        let acl: model::ShareAclModel = sqlx::query_as(
             r#"
             INSERT INTO share_acl (client_id, share_id)
             VALUES ($1, $2)
@@ -110,74 +356,39 @@ impl PostgresCatalog {
         Ok(acl)
     }
 
-    async fn select_share_by_name(
+    /// Revoke a client's access to a share
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async {
+    /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
+    /// use delta_sharing_server::auth::ClientId;
+    ///
+    /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
+    /// let client_id = ClientId::known("foo");
+    /// let client = catalog.select_client_by_name(&client_id).await.unwrap().unwrap();
+    /// let share = catalog.select_share_by_name(&client_id, "bar").await.unwrap().unwrap();
+    ///
+    /// let result = catalog.revoke_access_to_share(&client.id, &share.id).await;
+    /// assert!(result.is_ok());
+    /// # Ok::<(), Box<dyn std::error::Error>> };
+    /// # Ok(()) }
+    pub async fn revoke_access_to_share(
         &self,
-        share_name: &str,
-    ) -> Result<Option<ShareInfo>, sqlx::Error> {
-        // let res: Result<Option<ShareInfo>, _> = sqlx::query(
-        //     r#"
-        //     SELECT
-        //         id::text AS share_id,
-        //         name AS share_name
-        //     FROM share
-        //     WHERE name = $1;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .fetch_optional(&self.pool)
-        // .await?
-        // .transpose();
-
-        todo!()
-    }
-
-    async fn select_shares(
-        &self,
-        client_id: &ClientId,
-        cursor: &PostgresCursor,
-    ) -> Result<Vec<ShareInfo>, sqlx::Error> {
-        let shares: Vec<model::Share> = sqlx::query_as(
+        client_id: &Uuid,
+        share_id: &Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
             r#"
-            SELECT
-                s.id,
-                s.name
-            FROM share s
-            JOIN share_acl a ON s.id = a.share_id
-            JOIN client c ON a.client_id = c.id
-            WHERE c.name = $1 AND s.id > $2
-            ORDER BY s.id ASC
-            LIMIT $3;
+            DELETE FROM share_acl
+            WHERE client_id = $1 AND share_id = $2;
             "#,
         )
-        .bind(client_id.to_string())
-        .bind(cursor.last_seen_id())
-        .bind(cursor.limit())
-        .fetch_all(&self.pool)
+        .bind(client_id)
+        .bind(share_id)
+        .execute(&self.pool)
         .await?;
-
-        let shares: Vec<ShareInfo> = shares
-            .into_iter()
-            .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
-            .collect();
-
-        Ok(shares)
-    }
-
-    /// Delete a share from the database.
-    pub async fn delete_share_by_name(&self, share_name: &str) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM share WHERE name = $1;")
-            .bind(share_name)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
-    }
-
-    /// Delete all shares from the database.
-    pub async fn delete_shares(&self) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM share;")
-            .execute(&self.pool)
-            .await?;
 
         Ok(())
     }
@@ -185,85 +396,72 @@ impl PostgresCatalog {
     /// Insert a new schema into the database.
     pub async fn insert_schema(
         &self,
-        share: &Share,
-        schema_name: &str,
-    ) -> Result<Schema, sqlx::Error> {
-        let schema_id = Uuid::new_v4();
-        sqlx::query(
+        share_id: &Uuid,
+        schema: SchemaInfo,
+    ) -> Result<model::SchemaModel, sqlx::Error> {
+        let schema: model::SchemaModel = sqlx::query_as(
             r#"
-            INSERT INTO schema (id, name, share_id) 
-            VALUES ($1, $2, $3);
+            INSERT INTO schema (name, share_id)
+            VALUES ($1, $2) 
+            RETURNING *;
             "#,
         )
-        .bind(schema_id)
-        .bind(schema_name)
-        .bind(Uuid::parse_str(share.id().unwrap()).unwrap())
-        .execute(&self.pool)
+        .bind(schema.name())
+        .bind(share_id)
+        .fetch_one(&self.pool)
         .await?;
-
-        let schema = SchemaBuilder::new(share.clone(), schema_name)
-            .id(schema_id.to_string())
-            .build();
 
         Ok(schema)
     }
 
-    async fn select_schema_by_name(
+    async fn select_schemas_by_client(
         &self,
-        share_name: &str,
-        schema_name: &str,
-    ) -> Result<Option<Schema>, sqlx::Error> {
-        // sqlx::query(
-        //     r#"
-        //     SELECT
-        //         share.id::text AS share_id,
-        //         share.name AS share_name,
-        //         "schema".id::text AS schema_id,
-        //         "schema".name AS schema_name
-        //     FROM share
-        //     LEFT JOIN "schema" ON "schema".share_id = share.id
-        //     WHERE share.name = $1 AND "schema".name = $2;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .bind(schema_name)
-        // .fetch_optional(&self.pool)
-        // .await?
-        // .map(TryFrom::try_from)
-        // .transpose()
-
-        todo!()
-    }
-
-    async fn select_schemas_by_share_name(
-        &self,
+        client_id: &ClientId,
         share_name: &str,
         cursor: &PostgresCursor,
-    ) -> Result<Vec<Schema>, sqlx::Error> {
-        // sqlx::query(
-        //     r#"
-        //     SELECT
-        //         share.id::text AS share_id,
-        //         share.name AS share_name,
-        //         "schema".id::text AS schema_id,
-        //         "schema".name AS schema_name
-        //     FROM share
-        //     LEFT JOIN "schema" ON "schema".share_id = share.id
-        //     WHERE share.name = $1 AND "schema".id > $2
-        //     ORDER BY "schema".id
-        //     LIMIT $3;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .bind(cursor.last_seen_id())
-        // .bind(cursor.limit())
-        // .fetch_all(&self.pool)
-        // .await?
-        // .into_iter()
-        // .map(TryFrom::try_from)
-        // .collect()
+    ) -> Result<Vec<SchemaInfo>, sqlx::Error> {
+        let schemas: Vec<model::SchemaInfoModel> = sqlx::query_as(
+            r#"
+            WITH acl AS (
+                SELECT
+                    sh.share_id,
+                    sc.schema_id
+                FROM client c
+                JOIN share_acl sh ON sh.client_id = c.id
+                JOIN schema_acl sc ON sc.client_id = c.id
+                WHERE c.name = $1
+            )
+            SELECT
+                sc.id,
+                sc.name,
+                sh.name AS share_name
+            FROM schema sc
+            JOIN share sh ON sh.id = sc.share_id
+            JOIN acl ON acl.schema_id = sc.id AND acl.share_id = sh.id
+            WHERE sh.name = $2 AND sc.id > $3
+            ORDER BY sc.id ASC
+            LIMIT $4;
+            "#,
+        )
+        .bind(client_id.to_string())
+        .bind(share_name)
+        .bind(cursor.last_seen_id())
+        .bind(cursor.limit())
+        .fetch_all(&self.pool)
+        .await?;
 
-        todo!()
+        let schemas: Vec<SchemaInfo> = schemas
+            .into_iter()
+            .map(|s| {
+                SchemaInfo::new_with_id(
+                    s.id.to_string(),
+                    s.name.to_string(),
+                    s.share_name.to_string(),
+                )
+            })
+            .collect();
+
+        Ok(schemas)
     }
 
     /// Delete a schema from the database.
@@ -276,152 +474,215 @@ impl PostgresCatalog {
         Ok(())
     }
 
-    /// Delete all schemas from the database.
-    pub async fn delete_schemas(&self) -> Result<(), sqlx::Error> {
-        sqlx::query(r#"DELETE FROM "schema";"#)
-            .execute(&self.pool)
-            .await?;
+    pub async fn grant_access_to_schema(
+        &self,
+        client_id: &Uuid,
+        schema_id: &Uuid,
+    ) -> Result<model::SchemaAclModel, sqlx::Error> {
+        let acl: model::SchemaAclModel = sqlx::query_as(
+            r#"
+            INSERT INTO schema_acl (client_id, schema_id)
+            VALUES ($1, $2)
+            RETURNING *;
+            "#,
+        )
+        .bind(client_id)
+        .bind(schema_id)
+        .fetch_one(&self.pool)
+        .await?;
 
-        Ok(())
+        Ok(acl)
     }
+
+    // TODO: revoke access to schema
 
     /// Insert a new table into the database.
     pub async fn insert_table(
         &self,
-        schema: &Schema,
-        table_name: &str,
-        storage_path: &str,
-        storage_format: Option<&String>,
-    ) -> Result<Table, sqlx::Error> {
-        let uuid = Uuid::new_v4();
-        sqlx::query(
+        schema_id: &Uuid,
+        table: TableInfo,
+    ) -> Result<model::TableModel, sqlx::Error> {
+        let table: model::TableModel = sqlx::query_as(
             r#"
-            INSERT INTO "table" (id, name, schema_id, storage_path, storage_format) 
-            VALUES ($1, $2, $3, $4, $5);
+            INSERT INTO "table" (name, schema_id, storage_path) 
+            VALUES ($1, $2, $3)
+            RETURNING *;
             "#,
         )
-        .bind(uuid)
-        .bind(table_name)
-        .bind(Uuid::parse_str(schema.id().unwrap()).unwrap())
-        .bind(storage_path)
-        .bind(storage_format)
-        .execute(&self.pool)
+        .bind(table.name())
+        .bind(schema_id)
+        .bind(table.storage_path())
+        .fetch_one(&self.pool)
         .await?;
-
-        let table = TableBuilder::new(schema.clone(), table_name, storage_path)
-            .id(uuid.to_string())
-            .set_format(storage_format.cloned())
-            .build();
 
         Ok(table)
     }
 
-    async fn select_tables_by_share(
+    async fn select_tables_by_client_and_schema(
         &self,
-        share_name: &str,
-        cursor: &PostgresCursor,
-    ) -> Result<Vec<Table>, sqlx::Error> {
-        // sqlx::query(
-        //     r#"
-        //     SELECT
-        //         share.id::text AS share_id,
-        //         share.name AS share_name,
-        //         "schema".id::text AS schema_id,
-        //         "schema".name AS schema_name,
-        //         "table".id::text AS table_id,
-        //         "table".name AS table_name,
-        //         "table".storage_path AS storage_path,
-        //         "table".storage_format AS storage_format
-        //     FROM share
-        //     LEFT JOIN "schema" ON "schema".share_id = share.id
-        //     LEFT JOIN "table" ON "table".schema_id = "schema".id
-        //     WHERE share.name = $1 AND "table".id > $2
-        //     ORDER BY "table".id
-        //     LIMIT $3;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .bind(cursor.last_seen_id())
-        // .bind(cursor.limit())
-        // .fetch_all(&self.pool)
-        // .await?
-        // .into_iter()
-        // .map(TryFrom::try_from)
-        // .collect()
-
-        todo!()
-    }
-
-    async fn select_tables_by_schema(
-        &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         cursor: &PostgresCursor,
-    ) -> Result<Vec<Table>, sqlx::Error> {
-        // sqlx::query(
-        //     r#"
-        //     SELECT
-        //         share.id::text AS share_id,
-        //         share.name AS share_name,
-        //         "schema".id::text AS schema_id,
-        //         "schema".name AS schema_name,
-        //         "table".id::text AS table_id,
-        //         "table".name AS table_name,
-        //         "table".storage_path AS storage_path,
-        //         "table".storage_format AS storage_format
-        //     FROM share
-        //     LEFT JOIN "schema" ON "schema".share_id = share.id
-        //     LEFT JOIN "table" ON "table".schema_id = "schema".id
-        //     WHERE share.name = $1 AND "schema".name = $2 AND "table".id > $3
-        //     ORDER BY "table".id
-        //     LIMIT $4;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .bind(schema_name)
-        // .bind(cursor.last_seen_id())
-        // .bind(cursor.limit())
-        // .fetch_all(&self.pool)
-        // .await?
-        // .into_iter()
-        // .map(TryFrom::try_from)
-        // .collect()
+    ) -> Result<Vec<TableInfo>, sqlx::Error> {
+        let tables: Vec<model::TableInfoModel> = sqlx::query_as(
+            r#"
+            WITH acl AS (
+                SELECT
+                    sh.share_id,
+                    sc.schema_id,
+                    t.table_id
+                FROM client c
+                JOIN share_acl sh ON sh.client_id = c.id
+                JOIN schema_acl sc ON sc.client_id = c.id
+                JOIN table_acl t ON t.client_id = c.id
+                WHERE c.name = $1
+            )
+            SELECT
+                t.id,
+                sh.id AS share_id,
+                t.name,
+                sc.name AS schema_name,
+                sh.name AS share_name,
+                t.storage_path
+            FROM "table" t
+            JOIN schema sc ON sc.id = t.schema_id
+            JOIN share sh ON sh.id = sc.share_id
+            JOIN acl ON acl.table_id = t.id AND acl.schema_id = sc.id AND acl.share_id = sh.id
+            WHERE sh.name = $2 AND sc.name = $3 AND t.id > $4
+            ORDER BY t.id ASC
+            LIMIT $5;
+            "#,
+        )
+        .bind(client_id.to_string())
+        .bind(share_name)
+        .bind(schema_name)
+        .bind(cursor.last_seen_id())
+        .bind(cursor.limit())
+        .fetch_all(&self.pool)
+        .await?;
 
-        todo!()
+        let table_infos = tables
+            .into_iter()
+            .map(|t| TableInfo {
+                id: Some(t.id.to_string()),
+                share_id: Some(t.share_id.to_string()),
+                name: t.name,
+                schema_name: t.schema_name,
+                share_name: t.share_name,
+                storage_location: t.storage_path,
+            })
+            .collect();
+
+        Ok(table_infos)
+    }
+
+    async fn select_tables_by_client_and_share(
+        &self,
+        client_id: &ClientId,
+        share_name: &str,
+        cursor: &PostgresCursor,
+    ) -> Result<Vec<TableInfo>, sqlx::Error> {
+        let tables: Vec<model::TableInfoModel> = sqlx::query_as(
+            r#"
+            WITH acl AS (
+                SELECT
+                    sh.share_id,
+                    sc.schema_id,
+                    t.table_id
+                FROM client c
+                JOIN share_acl sh ON sh.client_id = c.id
+                JOIN schema_acl sc ON sc.client_id = c.id
+                JOIN table_acl t ON t.client_id = c.id
+                WHERE c.name = $1
+            )
+            SELECT
+                t.id,
+                sh.id AS share_id,
+                t.name,
+                sc.name AS schema_name,
+                sh.name AS share_name,
+                t.storage_path
+            FROM "table" t
+            JOIN schema sc ON sc.id = t.schema_id
+            JOIN share sh ON sh.id = sc.share_id
+            JOIN acl ON acl.table_id = t.id AND acl.schema_id = sc.id AND acl.share_id = sh.id
+            WHERE sh.name = $2 AND t.id > $3
+            ORDER BY t.id ASC
+            LIMIT $4;
+            "#,
+        )
+        .bind(client_id.to_string())
+        .bind(share_name)
+        .bind(cursor.last_seen_id())
+        .bind(cursor.limit())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let table_infos = tables
+            .into_iter()
+            .map(|t| TableInfo {
+                id: Some(t.id.to_string()),
+                share_id: Some(t.share_id.to_string()),
+                name: t.name,
+                schema_name: t.schema_name,
+                share_name: t.share_name,
+                storage_location: t.storage_path,
+            })
+            .collect();
+
+        Ok(table_infos)
     }
 
     async fn select_table_by_name(
         &self,
+        client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Option<Table>, sqlx::Error> {
-        // sqlx::query(
-        //     r#"
-        //     SELECT
-        //         share.id::text AS share_id,
-        //         share.name AS share_name,
-        //         "schema".id::text AS schema_id,
-        //         "schema".name AS schema_name,
-        //         "table".id::text AS table_id,
-        //         "table".name AS table_name,
-        //         "table".storage_path AS storage_path,
-        //         "table".storage_format AS storage_format
-        //     FROM share
-        //     LEFT JOIN "schema" ON "schema".share_id = share.id
-        //     LEFT JOIN "table" ON "table".schema_id = "schema".id
-        //     WHERE share.name = $1 AND "schema".name = $2 AND "table".name = $3;
-        //     "#,
-        // )
-        // .bind(share_name)
-        // .bind(schema_name)
-        // .bind(table_name)
-        // .fetch_optional(&self.pool)
-        // .await?
-        // .map(TryFrom::try_from)
-        // .transpose()
+    ) -> Result<Option<TableInfo>, sqlx::Error> {
+        let table: Option<model::TableInfoModel> = sqlx::query_as(
+            r#"
+            WITH acl AS (
+                SELECT
+                    sh.share_id,
+                    sc.schema_id,
+                    t.table_id
+                FROM client c
+                JOIN share_acl sh ON sh.client_id = c.id
+                JOIN schema_acl sc ON sc.client_id = c.id
+                JOIN table_acl t ON t.client_id = c.id
+                WHERE c.name = $1
+            )
+            SELECT
+                t.id,
+                sh.id AS share_id,
+                t.name,
+                sc.name AS schema_name,
+                sh.name AS share_name,
+                t.storage_path
+            FROM "table" t
+            JOIN schema sc ON sc.id = t.schema_id
+            JOIN share sh ON sh.id = sc.share_id
+            JOIN acl ON acl.table_id = t.id AND acl.schema_id = sc.id AND acl.share_id = sh.id
+            WHERE sh.name = $2 AND sc.name = $3 AND t.name = $4;
+            "#,
+        )
+        .bind(client_id.to_string())
+        .bind(share_name)
+        .bind(schema_name)
+        .bind(table_name)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        todo!()
+        Ok(table.map(|t| TableInfo {
+            id: Some(t.id.to_string()),
+            share_id: Some(t.share_id.to_string()),
+            name: t.name,
+            schema_name: t.schema_name,
+            share_name: t.share_name,
+            storage_location: t.storage_path,
+        }))
     }
 
     /// Delete a table from the database.
@@ -464,9 +725,31 @@ impl PostgresCatalog {
 
         Ok(())
     }
+
+    /// Grant a client access to a table
+    pub async fn grant_access_to_table(
+        &self,
+        client_id: &Uuid,
+        table_id: &Uuid,
+    ) -> Result<model::TableAclModel, sqlx::Error> {
+        let acl: model::TableAclModel = sqlx::query_as(
+            r#"
+            INSERT INTO table_acl (client_id, table_id)
+            VALUES ($1, $2)
+            RETURNING *;
+            "#,
+        )
+        .bind(client_id)
+        .bind(table_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(acl)
+    }
 }
 
-struct PostgresCursor {
+#[derive(Debug)]
+pub struct PostgresCursor {
     last_seen_id: Option<Uuid>,
     limit: Option<u32>,
 }
@@ -494,6 +777,15 @@ impl PostgresCursor {
     }
 }
 
+impl Default for PostgresCursor {
+    fn default() -> Self {
+        Self {
+            last_seen_id: None,
+            limit: Some(500),
+        }
+    }
+}
+
 impl TryFrom<Pagination> for PostgresCursor {
     type Error = &'static str;
     fn try_from(cursor: Pagination) -> Result<Self, Self::Error> {
@@ -506,56 +798,6 @@ impl TryFrom<Pagination> for PostgresCursor {
     }
 }
 
-// impl TryFrom<PgRow> for Share {
-//     type Error = sqlx::Error;
-
-//     fn try_from(row: PgRow) -> Result<Self, Self::Error> {
-//         let name: String = row.try_get("share_name")?;
-//         let id: String = row.try_get("share_id")?;
-//         Ok(ShareBuilder::new(name).id(id).build())
-//     }
-// }
-
-// impl TryFrom<PgRow> for Schema {
-//     type Error = sqlx::Error;
-
-//     fn try_from(row: PgRow) -> Result<Self, Self::Error> {
-//         let share_id: String = row.try_get("share_id")?;
-//         let share_name: String = row.try_get("share_name")?;
-//         let schema_id: String = row.try_get("schema_id")?;
-//         let schema_name: String = row.try_get("schema_name")?;
-
-//         let share = ShareBuilder::new(share_name).id(share_id).build();
-//         let schema = SchemaBuilder::new(share, schema_name).id(schema_id).build();
-
-//         Ok(schema)
-//     }
-// }
-
-// impl TryFrom<PgRow> for Table {
-//     type Error = sqlx::Error;
-
-//     fn try_from(row: PgRow) -> Result<Self, Self::Error> {
-//         let share_id: String = row.try_get("share_id")?;
-//         let share_name: String = row.try_get("share_name")?;
-//         let schema_id: String = row.try_get("schema_id")?;
-//         let schema_name: String = row.try_get("schema_name")?;
-//         let table_id: String = row.try_get("table_id")?;
-//         let table_name: String = row.try_get("table_name")?;
-//         let storage_path: String = row.try_get("storage_path")?;
-//         let storage_format: Option<String> = row.try_get("storage_format")?;
-
-//         let share = ShareBuilder::new(share_name).id(share_id).build();
-//         let schema = SchemaBuilder::new(share, schema_name).id(schema_id).build();
-//         let table = TableBuilder::new(schema, table_name, storage_path)
-//             .id(table_id)
-//             .set_format(storage_format)
-//             .build();
-
-//         Ok(table)
-//     }
-// }
-
 #[async_trait]
 impl Catalog for PostgresCatalog {
     async fn list_shares(
@@ -565,17 +807,16 @@ impl Catalog for PostgresCatalog {
     ) -> Result<Page<ShareInfo>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
-        let shares = self.select_shares(client_id, &pg_cursor).await?;
+        let shares_info_models = self.select_shares(client_id, &pg_cursor).await?;
 
-        let next_page_token = if shares.len() == pg_cursor.limit() as usize {
-            shares
-                .iter()
-                .last()
-                .and_then(|s| s.id())
-                .map(|id| id.to_string())
-        } else {
-            None
-        };
+        let shares = shares_info_models
+            .into_iter()
+            .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
+            .collect::<Vec<_>>();
+        let next_page_token = shares
+            .iter()
+            .nth(pg_cursor.limit() as usize - 1)
+            .and_then(|s| s.id().map(ToOwned::to_owned));
 
         Ok(Page::new(shares, next_page_token))
     }
@@ -586,25 +827,18 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<SchemaInfo>, CatalogError> {
-        // let pg_cursor = PostgresCursor::try_from(cursor.clone())
-        //     .map_err(|_| CatalogError::MalformedContinuationToken)?;
-        // let schemas = self
-        //     .select_schemas_by_share_name(share_name, &pg_cursor)
-        //     .await?;
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+        let schemas = self
+            .select_schemas_by_client(client_id, share_name, &pg_cursor)
+            .await?;
 
-        // let next_page_token = if schemas.len() == pg_cursor.limit() as usize {
-        //     schemas
-        //         .iter()
-        //         .last()
-        //         .and_then(|s| s.id())
-        //         .map(|id| id.to_string())
-        // } else {
-        //     None
-        // };
+        let next_page_token = schemas
+            .iter()
+            .nth(pg_cursor.limit() as usize - 1)
+            .and_then(|s| s.id().map(ToOwned::to_owned));
 
-        // Ok(Page::new(schemas, next_page_token))
-
-        todo!()
+        Ok(Page::new(schemas, next_page_token))
     }
 
     async fn list_tables_in_share(
@@ -613,22 +847,18 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        // let pg_cursor = PostgresCursor::try_from(cursor.clone())
-        //     .map_err(|_| CatalogError::MalformedContinuationToken)?;
-        // let tables = self.select_tables_by_share(share_name, &pg_cursor).await?;
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+        let tables = self
+            .select_tables_by_client_and_share(client_id, share_name, &pg_cursor)
+            .await?;
 
-        // let next_page_token = if tables.len() == pg_cursor.limit() as usize {
-        //     tables
-        //         .iter()
-        //         .last()
-        //         .and_then(|s| s.id())
-        //         .map(|id| id.to_string())
-        // } else {
-        //     None
-        // };
+        let next_page_token = tables
+            .iter()
+            .nth(pg_cursor.limit() as usize - 1)
+            .and_then(|s| s.id().map(ToOwned::to_owned));
 
-        // Ok(Page::new(tables, next_page_token))
-        todo!()
+        Ok(Page::new(tables, next_page_token))
     }
 
     async fn list_tables_in_schema(
@@ -638,24 +868,18 @@ impl Catalog for PostgresCatalog {
         schema_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<TableInfo>, CatalogError> {
-        // let pg_cursor = PostgresCursor::try_from(cursor.clone())
-        //     .map_err(|_| CatalogError::MalformedContinuationToken)?;
-        // let tables = self
-        //     .select_tables_by_schema(share_name, schema_name, &pg_cursor)
-        //     .await?;
+        let pg_cursor = PostgresCursor::try_from(cursor.clone())
+            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+        let tables = self
+            .select_tables_by_client_and_schema(client_id, share_name, schema_name, &pg_cursor)
+            .await?;
 
-        // let next_page_token = if tables.len() == pg_cursor.limit() as usize {
-        //     tables
-        //         .iter()
-        //         .last()
-        //         .and_then(|s| s.id())
-        //         .map(|id| id.to_string())
-        // } else {
-        //     None
-        // };
+        let next_page_token = tables
+            .iter()
+            .nth(pg_cursor.limit() as usize - 1)
+            .and_then(|s| s.id().map(ToOwned::to_owned));
 
-        // Ok(Page::new(tables, next_page_token))
-        Err(CatalogError::ConnectionError)
+        Ok(Page::new(tables, next_page_token))
     }
 
     async fn get_share(
@@ -663,12 +887,12 @@ impl Catalog for PostgresCatalog {
         client_id: &ClientId,
         share_name: &str,
     ) -> Result<ShareInfo, CatalogError> {
-        // self.select_share_by_name(share_name)
-        //     .await?
-        //     .ok_or(CatalogError::ShareNotFound {
-        //         share_name: share_name.to_string(),
-        //     })
-        todo!()
+        self.select_share_by_name(client_id, share_name)
+            .await?
+            .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
+            .ok_or(CatalogError::ShareNotFound {
+                share_name: share_name.to_string(),
+            })
     }
 
     async fn get_table(
@@ -678,32 +902,13 @@ impl Catalog for PostgresCatalog {
         schema_name: &str,
         table_name: &str,
     ) -> Result<TableInfo, CatalogError> {
-        // match self
-        //     .select_table_by_name(share_name, schema_name, table_name)
-        //     .await
-        // {
-        //     Ok(Some(table)) => Ok(table),
-        //     Ok(None) => {
-        //         let share = self.select_share_by_name(share_name).await?;
-        //         let schema = self.select_schema_by_name(share_name, schema_name).await?;
-        //         match (share, schema) {
-        //             (None, _) => Err(CatalogError::ShareNotFound {
-        //                 share_name: share_name.to_owned(),
-        //             }),
-        //             (Some(_), None) => Err(CatalogError::SchemaNotFound {
-        //                 share_name: share_name.to_owned(),
-        //                 schema_name: schema_name.to_owned(),
-        //             }),
-        //             (Some(_), Some(_)) => Err(CatalogError::TableNotFound {
-        //                 share_name: share_name.to_owned(),
-        //                 schema_name: schema_name.to_owned(),
-        //                 table_name: table_name.to_owned(),
-        //             }),
-        //         }
-        //     }
-        //     Err(err) => Err(err.into()),
-        // }
-        Err(CatalogError::ConnectionError)
+        self.select_table_by_name(client_id, share_name, schema_name, table_name)
+            .await?
+            .ok_or(CatalogError::TableNotFound {
+                share_name: share_name.to_string(),
+                schema_name: schema_name.to_string(),
+                table_name: table_name.to_string(),
+            })
     }
 }
 

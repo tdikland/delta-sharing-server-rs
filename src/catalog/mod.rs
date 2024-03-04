@@ -8,6 +8,7 @@ use crate::auth::ClientId;
 
 pub mod dynamo;
 pub mod file;
+
 pub mod postgres;
 
 /// Trait implemented by Share managers that each represent a different backing
@@ -155,13 +156,30 @@ impl ShareInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SchemaInfo {
+    pub(crate) id: Option<String>,
     pub(crate) name: String,
     pub(crate) share_name: String,
 }
 
 impl SchemaInfo {
     pub fn new(name: String, share_name: String) -> Self {
-        Self { name, share_name }
+        Self {
+            id: None,
+            name,
+            share_name,
+        }
+    }
+
+    pub fn new_with_id(id: String, name: String, share_name: String) -> Self {
+        Self {
+            id: Some(id),
+            name,
+            share_name,
+        }
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
     pub fn name(&self) -> &str {
@@ -198,6 +216,10 @@ impl TableInfo {
             id: None,
             share_id: None,
         }
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
     pub fn name(&self) -> &str {

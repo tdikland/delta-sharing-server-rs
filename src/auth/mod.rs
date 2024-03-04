@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Display},
+    ops::Deref,
     task::{Context, Poll},
 };
 
@@ -20,11 +21,32 @@ impl ClientId {
     pub fn known(id: impl Into<String>) -> Self {
         Self::Known(id.into())
     }
+
+    pub fn as_str(&self) -> &str {
+        self
+    }
 }
 
 impl Default for ClientId {
     fn default() -> Self {
         Self::Anonymous
+    }
+}
+
+impl AsRef<str> for ClientId {
+    fn as_ref(&self) -> &str {
+        self
+    }
+}
+
+impl Deref for ClientId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ClientId::Anonymous => "ANONYMOUS",
+            ClientId::Known(id) => id.as_str(),
+        }
     }
 }
 
