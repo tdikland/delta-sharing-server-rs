@@ -3,7 +3,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 
-use axum::http::header::CONTENT_TYPE;
 use axum::http::HeaderName;
 use axum::response::Response;
 use axum::BoxError;
@@ -316,49 +315,52 @@ pub struct ParquetFile {
     expiration_timestamp: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum ParquetAction {
-    Protocol(ParquetProtocol),
-    Metadata(ParquetMetadata),
-    File(ParquetFile),
-}
+// #[derive(Debug, Clone, Serialize)]
+// pub enum ParquetAction {
+//     /// Protocol action
+//     Protocol(ParquetProtocol),
+//     /// Metadata action
+//     Metadata(ParquetMetadata),
+//     /// Data action
+//     File(ParquetFile),
+// }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ParquetSharingResponse {
-    version: TableVersionNumber,
-    protocol: ParquetAction,
-    metadata: ParquetAction,
-    data: Vec<ParquetAction>,
-}
+// #[derive(Debug, Clone, Serialize)]
+// pub struct ParquetSharingResponse {
+//     version: TableVersionNumber,
+//     protocol: ParquetAction,
+//     metadata: ParquetAction,
+//     data: Vec<ParquetAction>,
+// }
 
-impl IntoResponse for ParquetSharingResponse {
-    fn into_response(self) -> Response {
-        let mut buf = BytesMut::new().writer();
-        serde_json::to_writer(&mut buf, &self.protocol).unwrap();
-        buf.write_all(b"\n").unwrap();
-        serde_json::to_writer(&mut buf, &self.metadata).unwrap();
-        buf.write_all(b"\n").unwrap();
-        for file in self.data {
-            serde_json::to_writer(&mut buf, &file).unwrap();
-            buf.write_all(b"\n").unwrap();
-        }
+// impl IntoResponse for ParquetSharingResponse {
+//     fn into_response(self) -> Response {
+//         let mut buf = BytesMut::new().writer();
+//         serde_json::to_writer(&mut buf, &self.protocol).unwrap();
+//         buf.write_all(b"\n").unwrap();
+//         serde_json::to_writer(&mut buf, &self.metadata).unwrap();
+//         buf.write_all(b"\n").unwrap();
+//         for file in self.data {
+//             serde_json::to_writer(&mut buf, &file).unwrap();
+//             buf.write_all(b"\n").unwrap();
+//         }
 
-        let version = self.version.to_string();
-        let headers = [
-            (CONTENT_TYPE, "application/x-ndjson; charset=utf-8"),
-            (DELTA_TABLE_VERSION, version.as_ref()),
-        ];
+//         let version = self.version.to_string();
+//         let headers = [
+//             (CONTENT_TYPE, "application/x-ndjson; charset=utf-8"),
+//             (DELTA_TABLE_VERSION, version.as_ref()),
+//         ];
 
-        (StatusCode::OK, headers, buf.into_inner()).into_response()
-    }
-}
+//         (StatusCode::OK, headers, buf.into_inner()).into_response()
+//     }
+// }
 
-pub struct DeltaResponse {
-    version: TableVersionNumber,
-    protocol: Protocol,
-    metadata: Metadata,
-    data: Vec<SignedDataFile>,
-}
+// pub struct DeltaResponse {
+//     version: TableVersionNumber,
+//     protocol: Protocol,
+//     metadata: Metadata,
+//     data: Vec<SignedDataFile>,
+// }
 
 impl From<TableMetadata> for TableActionsResponse {
     fn from(v: TableMetadata) -> Self {

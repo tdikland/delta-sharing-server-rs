@@ -1,3 +1,4 @@
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
 use delta_sharing_server::signer::{s3::S3UrlSigner, UrlSigner};
 
@@ -19,7 +20,7 @@ impl IntegrationContext {
 
 #[tokio::test]
 async fn s3() {
-    let config = aws_config::load_from_env().await;
+    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let s3_client = Client::new(&config);
     let ctx = IntegrationContext::new_s3(s3_client);
 

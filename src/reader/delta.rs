@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
 use crate::protocol::action::{FileBuilder, MetadataBuilder, ProtocolBuilder};
-use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData, VersionRange};
+use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData};
 
-use super::{TableReader, TableReaderError, Version};
+use super::{TableReader, TableReaderError, Version, VersionRange};
 
 /// TableReader implementation for the Delta Lake format.
 #[derive(Debug, Clone, PartialEq)]

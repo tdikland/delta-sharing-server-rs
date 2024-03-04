@@ -1,3 +1,5 @@
+//! Authentication middleware.
+
 use std::{
     fmt::{self, Display},
     ops::Deref,
@@ -7,21 +9,27 @@ use std::{
 use axum::extract::Request;
 use tower::{Layer, Service};
 
+/// Client identifier.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientId {
+    /// Anonymous client identifier.
     Anonymous,
+    /// Known client identifier.
     Known(String),
 }
 
 impl ClientId {
+    /// Create a new anonymous client identifier.
     pub fn anonymous() -> Self {
         Self::Anonymous
     }
 
+    /// Create a new known client identifier.
     pub fn known(id: impl Into<String>) -> Self {
         Self::Known(id.into())
     }
 
+    /// Get the client identifier as a string.
     pub fn as_str(&self) -> &str {
         self
     }
@@ -59,10 +67,13 @@ impl Display for ClientId {
     }
 }
 
+/// Authentication middleware.
+///
+/// Does not perform any authentication, but sets the client identifier to anonymous.
 #[derive(Clone)]
-pub struct AuthLayer;
+pub struct NoAuthLayer;
 
-impl<S> Layer<S> for AuthLayer {
+impl<S> Layer<S> for NoAuthLayer {
     type Service = Auth<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -70,6 +81,7 @@ impl<S> Layer<S> for AuthLayer {
     }
 }
 
+/// Authentication middleware.
 #[derive(Clone)]
 pub struct Auth<S> {
     inner: S,

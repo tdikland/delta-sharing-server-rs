@@ -62,10 +62,12 @@ impl Capabilities {
         self.response_format() == "delta"
     }
 
+    /// Returns the reader features if present.
     pub fn reader_features(&self) -> Option<&Vec<String>> {
         self.reader_features.as_ref()
     }
 
+    /// Returns true if the reader features contain the given feature.
     pub fn has_reader_feature(&self, feature: &str) -> bool {
         self.reader_features()
             .map(|features| features.contains(&feature.to_owned()))

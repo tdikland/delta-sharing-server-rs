@@ -8,7 +8,6 @@ use crate::auth::ClientId;
 
 pub mod dynamo;
 pub mod file;
-
 pub mod postgres;
 
 /// Trait implemented by Share managers that each represent a different backing
@@ -93,10 +92,12 @@ impl Pagination {
         }
     }
 
+    /// Return the maximum amount of results to be returned in a single page.
     pub fn max_results(&self) -> Option<u32> {
         self.max_results
     }
 
+    /// Return the token that can be used to resume listing from a specific point
     pub fn page_token(&self) -> Option<&str> {
         self.page_token.as_deref()
     }
@@ -110,6 +111,7 @@ pub struct Page<T> {
 }
 
 impl<T> Page<T> {
+    /// Create a new page with the specified items and next page token.
     pub fn new(items: Vec<T>, next_page_token: Option<String>) -> Self {
         Self {
             items,
@@ -117,23 +119,28 @@ impl<T> Page<T> {
         }
     }
 
+    /// Return the items in the page.
     pub fn items(&self) -> &Vec<T> {
         &self.items
     }
 
+    /// Return the token that can be used to resume listing from a specific point
     pub fn next_page_token(&self) -> Option<&str> {
         self.next_page_token.as_deref()
     }
 
+    /// Return the amount of items in the page.
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
+    /// Convert the page into its parts: items and next page token.
     pub fn into_parts(self) -> (Vec<T>, Option<String>) {
         (self.items, self.next_page_token)
     }
 }
 
+/// Information about a share stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShareInfo {
     pub(crate) name: String,
@@ -141,19 +148,23 @@ pub struct ShareInfo {
 }
 
 impl ShareInfo {
+    /// Create a new share info with the specified name and id.
     pub fn new(name: String, id: Option<String>) -> Self {
         Self { name, id }
     }
 
+    /// Return the name of the share.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Return the id of the share.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 }
 
+/// Information about a schema stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SchemaInfo {
     pub(crate) id: Option<String>,
@@ -162,6 +173,7 @@ pub struct SchemaInfo {
 }
 
 impl SchemaInfo {
+    /// Create a new schema info with the specified name and share name.
     pub fn new(name: String, share_name: String) -> Self {
         Self {
             id: None,
@@ -170,6 +182,7 @@ impl SchemaInfo {
         }
     }
 
+    /// Create a new schema info with the specified id, name and share name.
     pub fn new_with_id(id: String, name: String, share_name: String) -> Self {
         Self {
             id: Some(id),
@@ -178,19 +191,23 @@ impl SchemaInfo {
         }
     }
 
+    /// Return the id of the schema.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
+    /// Return the name of the schema.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Return the name of the share where the schema is stored.
     pub fn share_name(&self) -> &str {
         &self.share_name
     }
 }
 
+/// Information about a table stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableInfo {
     pub(crate) name: String,
@@ -202,6 +219,7 @@ pub struct TableInfo {
 }
 
 impl TableInfo {
+    /// Create a new table info with the specified name, schema name, share name
     pub fn new(
         name: String,
         schema_name: String,
@@ -218,22 +236,32 @@ impl TableInfo {
         }
     }
 
+    /// Return the id of the table.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
+    /// Return the id of the share where the table is stored.
+    pub fn share_id(&self) -> Option<&str> {
+        self.share_id.as_deref()
+    }
+
+    /// Return the name of the table.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Return the name of the schema where the table is stored.
     pub fn schema_name(&self) -> &str {
         &self.schema_name
     }
 
+    /// Return the name of the share where the table is stored.
     pub fn share_name(&self) -> &str {
         &self.share_name
     }
 
+    /// Return the storage location of the table.
     pub fn storage_path(&self) -> &str {
         &self.storage_location
     }
@@ -275,12 +303,14 @@ pub enum CatalogError {
 }
 
 impl CatalogError {
+    /// Create a new error indicating that the requested share was not found.
     pub fn share_not_found(share_name: impl Into<String>) -> Self {
         Self::ShareNotFound {
             share_name: share_name.into(),
         }
     }
 
+    /// Create a new error indicating that the requested schema was not found.
     pub fn schema_not_found(share_name: impl Into<String>, schema_name: impl Into<String>) -> Self {
         Self::SchemaNotFound {
             share_name: share_name.into(),
@@ -288,6 +318,7 @@ impl CatalogError {
         }
     }
 
+    /// Create a new error indicating that the requested table was not found.
     pub fn table_not_found(
         share_name: impl Into<String>,
         schema_name: impl Into<String>,
@@ -300,10 +331,13 @@ impl CatalogError {
         }
     }
 
+    /// Create a new error indicating that the list cursor token is malformed.
     pub fn malformed_pagination(_msg: impl Into<String>) -> Self {
         Self::MalformedContinuationToken
     }
 
+    /// Create a new error indicating that the specific implementation has an
+    /// internal error.
     pub fn internal(msg: impl Into<String>) -> Self {
         Self::Other { reason: msg.into() }
     }

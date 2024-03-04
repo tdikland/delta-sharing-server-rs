@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData};
 
 /// Table reader implementation for the Delta Lake format.
-// pub mod delta;
+pub mod delta;
 
 /// Trait for reading a specific table format from cloud storage.
 #[cfg_attr(test, mockall::automock)]
@@ -53,6 +53,7 @@ pub trait TableReader: Send + Sync {
     ) -> Result<UnsignedTableData, TableReaderError>;
 }
 
+/// Requested table version.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Version {
     /// Latest table version.

@@ -1,4 +1,5 @@
-use delta_sharing_server::catalog::dynamo::DynamoShareReader;
+use aws_config::BehaviorVersion;
+use delta_sharing_server::catalog::dynamo::{DynamoCatalog, DynamoCatalogConfig};
 use delta_sharing_server::reader::delta::DeltaTableReader;
 use delta_sharing_server::router::build_sharing_server_router;
 use delta_sharing_server::signer::s3::S3UrlSigner;
@@ -13,13 +14,10 @@ async fn main() {
         .init();
 
     // configure table manager
-    let config = aws_config::load_from_env().await;
+    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let ddb_client = aws_sdk_dynamodb::Client::new(&config);
-    let table_manager = Arc::new(DynamoShareReader::new(
-        ddb_client,
-        "delta-sharing-store".to_owned(),
-        "SK-PK-index".to_owned(),
-    ));
+    let catalog_config = DynamoCatalogConfig::new("test-table");
+    let catalog = Arc::new(DynamoCatalog::new(ddb_client, catalog_config));
 
     // configure table readers
     let delta_table_reader = Arc::new(DeltaTableReader::new());
@@ -29,14 +27,11 @@ async fn main() {
     let s3_url_signer = Arc::new(S3UrlSigner::new(s3_client));
 
     // initialize server state
-    let mut state = SharingServerState::new(table_manager);
-    state.add_table_reader("DELTA", delta_table_reader);
+    let mut state = SharingServerState::new(catalog, delta_table_reader);
     state.add_url_signer("S3", s3_url_signer);
 
     // start server
     let app = build_sharing_server_router(Arc::new(state));
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

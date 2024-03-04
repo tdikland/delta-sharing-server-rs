@@ -138,6 +138,11 @@ async fn get_table_metadata(
     // TODO: find out consequences of the delta-capability-header
     // e.g. check the protocol to see what reader features are required and checking against the header
     if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version() > 1 {
+        if capabilities.has_reader_feature("deletionvectors") {
+            return Err(ServerError::UnsupportedOperation {
+                reason: String::from("The required delta reader feature is not implemented."),
+            });
+        }
         return Err(ServerError::UnsupportedOperation {
             reason: String::from("The required delta reader feature is not implemented."),
         });

@@ -29,10 +29,12 @@ impl SharingServerState {
         }
     }
 
+    /// Get the catalog from the state.
     pub fn catalog(&self) -> Arc<dyn Catalog> {
         self.catalog.clone()
     }
 
+    /// Get the reader from the state.
     pub fn reader(&self) -> Arc<dyn TableReader> {
         self.reader.clone()
     }
@@ -184,10 +186,7 @@ impl SharingServerState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        catalog::{Catalog, MockCatalog},
-        reader::MockTableReader,
-    };
+    use crate::{catalog::MockCatalog, reader::MockTableReader};
     use insta::assert_json_snapshot;
 
     #[tokio::test]

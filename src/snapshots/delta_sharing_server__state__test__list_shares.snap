@@ -13,5 +13,5 @@ expression: response
       "id": "3e979c79-6399-4dac-bcf8-54e268f48515"
     }
   ],
-  "nextPageToken": "continuation_token"
+  "next_page_token": "continuation_token"
 }
