@@ -199,8 +199,8 @@ pub fn to_table_info(
     let schema_name = extract_from_item(item, config.schema_name())?;
     let table_name = extract_from_item(item, config.table_name())?;
     let storage_location = extract_from_item(item, config.table_storage_location())?;
-    let id = extract_from_item_opt(item, config.table_id());
-    let share_id = extract_from_item_opt(item, config.share_id());
+    let _id = extract_from_item_opt(item, config.table_id());
+    let _share_id = extract_from_item_opt(item, config.share_id());
 
     Ok(TableInfo::new(
         table_name,

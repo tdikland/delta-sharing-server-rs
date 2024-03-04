@@ -249,6 +249,7 @@ impl DynamoCatalog {
         convert::to_schema_info_page(res.items(), res.last_evaluated_key(), &self.config)
     }
 
+    /// Delete a schema from the catalog
     pub async fn _delete_schema(
         &self,
         client_id: &ClientId,
@@ -412,6 +413,7 @@ impl DynamoCatalog {
         convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
     }
 
+    /// Delete a table from the catalog
     pub async fn _delete_table(
         &self,
         _client_id: &ClientId,
@@ -486,15 +488,15 @@ impl Catalog for DynamoCatalog {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    // use super::*;
 
-    use aws_config::BehaviorVersion;
-    use aws_sdk_dynamodb::types::{
-        AttributeDefinition, BillingMode, KeySchemaElement, KeyType, ProvisionedThroughput,
-        ScalarAttributeType,
-    };
-    use testcontainers::{clients::Cli, Container, Image};
-    use testcontainers_modules::dynamodb_local::DynamoDb;
+    // use aws_config::BehaviorVersion;
+    // use aws_sdk_dynamodb::types::{
+    //     AttributeDefinition, BillingMode, KeySchemaElement, KeyType, ProvisionedThroughput,
+    //     ScalarAttributeType,
+    // };
+    // use testcontainers::{clients::Cli, Container, Image};
+    // use testcontainers_modules::dynamodb_local::DynamoDb;
 
     // #[tokio::test]
     // async fn test_parse_share_info() {
