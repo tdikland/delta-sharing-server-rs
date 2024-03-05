@@ -134,6 +134,11 @@ impl<T> Page<T> {
         self.items.len()
     }
 
+    /// Return whether the page is empty.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     /// Convert the page into its parts: items and next page token.
     pub fn into_parts(self) -> (Vec<T>, Option<String>) {
         (self.items, self.next_page_token)

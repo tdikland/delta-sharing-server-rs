@@ -127,7 +127,7 @@ impl TableReader for DeltaTableReader {
         _storage_path: &str,
         _range: VersionRange,
     ) -> Result<UnsignedTableData, TableReaderError> {
-        return Err(TableReaderError::Other);
+        Err(TableReaderError::Other)
     }
 }
 

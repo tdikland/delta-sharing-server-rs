@@ -1,0 +1,6 @@
+[book]
+authors = ["Tim Dikland"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Delta Sharing Server"

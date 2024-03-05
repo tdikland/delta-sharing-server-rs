@@ -19,6 +19,7 @@ use crate::catalog::{Page, SchemaInfo, ShareInfo, TableInfo};
 use crate::protocol::action::{Metadata, Protocol};
 use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
 
+#[allow(clippy::declare_interior_mutable_const)]
 const DELTA_TABLE_VERSION: HeaderName = HeaderName::from_static("delta-table-version");
 
 #[derive(Debug, Clone, Serialize)]

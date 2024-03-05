@@ -84,7 +84,7 @@ impl Catalog for FileCatalog {
     ) -> Result<Page<ShareInfo>, CatalogError> {
         let offset = pagination
             .page_token()
-            .map(|t| usize::from_str_radix(t, 10).unwrap())
+            .map(|t| t.parse::<usize>().unwrap())
             .unwrap_or(0);
         let max_results = pagination.max_results.unwrap_or(500) as usize;
 

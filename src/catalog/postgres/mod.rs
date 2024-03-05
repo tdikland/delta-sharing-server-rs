@@ -846,8 +846,7 @@ impl Catalog for PostgresCatalog {
             .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
             .collect::<Vec<_>>();
         let next_page_token = shares
-            .iter()
-            .nth(pg_cursor.limit() as usize - 1)
+            .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
 
         Ok(Page::new(shares, next_page_token))
@@ -871,8 +870,7 @@ impl Catalog for PostgresCatalog {
             .collect::<Vec<_>>();
 
         let next_page_token = schemas
-            .iter()
-            .nth(pg_cursor.limit() as usize - 1)
+            .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
 
         Ok(Page::new(schemas, next_page_token))
@@ -902,8 +900,7 @@ impl Catalog for PostgresCatalog {
             })
             .collect::<Vec<_>>();
         let next_page_token = tables
-            .iter()
-            .nth(pg_cursor.limit() as usize - 1)
+            .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
 
         Ok(Page::new(tables, next_page_token))
@@ -934,8 +931,7 @@ impl Catalog for PostgresCatalog {
             })
             .collect::<Vec<_>>();
         let next_page_token = tables
-            .iter()
-            .nth(pg_cursor.limit() as usize - 1)
+            .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
 
         Ok(Page::new(tables, next_page_token))

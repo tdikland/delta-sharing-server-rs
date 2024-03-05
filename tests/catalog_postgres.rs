@@ -530,7 +530,6 @@ async fn init_catalog(pool: PgPool) -> PostgresCatalog {
         .await
         .unwrap();
 
-    
     PostgresCatalog::from_pool(pool)
 }
 
