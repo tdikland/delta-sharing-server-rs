@@ -1,11 +1,11 @@
-const DYNAMO_ATTRIBUTE_PK: &'static str = "PK";
-const DYNAMO_ATTRIBUTE_SK: &'static str = "SK";
-const DYNAMO_ATTRIBUTE_SHARE_ID: &'static str = "share_id";
-const DYNAMO_ATTRIBUTE_SHARE_NAME: &'static str = "share_name";
-const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &'static str = "schema_name";
-const DYNAMO_ATTRIBUTE_TABLE_ID: &'static str = "table_id";
-const DYNAMO_ATTRIBUTE_TABLE_NAME: &'static str = "table_name";
-const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &'static str = "table_storage_location";
+const DYNAMO_ATTRIBUTE_PK: &str = "PK";
+const DYNAMO_ATTRIBUTE_SK: &str = "SK";
+const DYNAMO_ATTRIBUTE_SHARE_ID: &str = "share_id";
+const DYNAMO_ATTRIBUTE_SHARE_NAME: &str = "share_name";
+const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &str = "schema_name";
+const DYNAMO_ATTRIBUTE_TABLE_ID: &str = "table_id";
+const DYNAMO_ATTRIBUTE_TABLE_NAME: &str = "table_name";
+const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &str = "table_storage_location";
 
 /// Configuration for the Dynamo catalog.
 pub struct DynamoCatalogConfig {

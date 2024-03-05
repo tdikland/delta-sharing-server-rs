@@ -65,7 +65,7 @@ pub fn to_share_info_page(
     config: &DynamoCatalogConfig,
 ) -> Result<Page<ShareInfo>, CatalogError> {
     let shares = items
-        .into_iter()
+        .iter()
         .map(|item| to_share_info(item, config))
         .collect::<Result<Vec<ShareInfo>, CatalogError>>()?;
 
@@ -127,7 +127,7 @@ pub fn to_schema_info_page(
     config: &DynamoCatalogConfig,
 ) -> Result<Page<SchemaInfo>, CatalogError> {
     let schemas = items
-        .into_iter()
+        .iter()
         .map(|item| to_schema_info(item, config))
         .collect::<Result<Vec<SchemaInfo>, CatalogError>>()?;
 
@@ -216,7 +216,7 @@ pub fn to_table_info_page(
     config: &DynamoCatalogConfig,
 ) -> Result<Page<TableInfo>, CatalogError> {
     let tables = items
-        .into_iter()
+        .iter()
         .map(|item| to_table_info(item, config))
         .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
 

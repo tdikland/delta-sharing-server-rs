@@ -402,7 +402,7 @@ impl DynamoCatalog {
             .client
             .query()
             .table_name(self.config.table_name())
-            .tables_for_client_schema_cond(&client_id, &share_name, &schema_name, &self.config)
+            .tables_for_client_schema_cond(client_id, share_name, schema_name, &self.config)
             .with_pagination(pagination)
             .send()
             .await

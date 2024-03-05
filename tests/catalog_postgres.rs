@@ -530,8 +530,8 @@ async fn init_catalog(pool: PgPool) -> PostgresCatalog {
         .await
         .unwrap();
 
-    let catalog = PostgresCatalog::from_pool(pool);
-    catalog
+    
+    PostgresCatalog::from_pool(pool)
 }
 
 async fn seed_catalog(catalog: &PostgresCatalog) {

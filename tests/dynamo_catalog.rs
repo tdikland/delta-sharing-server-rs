@@ -19,7 +19,7 @@ use testcontainers_modules::dynamodb_local::DynamoDb;
 #[tokio::test]
 async fn test_list_shares() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -70,7 +70,7 @@ async fn test_list_shares() {
 #[tokio::test]
 async fn test_list_shares_pagination() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -121,7 +121,7 @@ async fn test_list_shares_pagination() {
 #[tokio::test]
 async fn list_schemas() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -147,7 +147,7 @@ async fn list_schemas() {
 #[tokio::test]
 async fn list_schemas_pagination() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -166,7 +166,7 @@ async fn list_schemas_pagination() {
 #[tokio::test]
 async fn list_tables_share() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -185,7 +185,7 @@ async fn list_tables_share() {
 #[tokio::test]
 async fn list_tables_share_pagination() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -204,7 +204,7 @@ async fn list_tables_share_pagination() {
 #[tokio::test]
 async fn list_tables_in_schema() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -239,7 +239,7 @@ async fn list_tables_in_schema() {
 #[tokio::test]
 async fn list_tables_in_schema_pagination() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -263,7 +263,7 @@ async fn list_tables_in_schema_pagination() {
 #[tokio::test]
 async fn get_share() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -287,7 +287,7 @@ async fn get_share() {
 #[tokio::test]
 async fn get_table() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -322,7 +322,7 @@ async fn get_table() {
 #[tokio::test]
 async fn put_schema_without_share_error() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -358,7 +358,7 @@ async fn put_schema_without_share_error() {
 #[tokio::test]
 async fn put_table_without_schema_error() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -412,7 +412,7 @@ async fn put_table_without_schema_error() {
 #[tokio::test]
 async fn delete_schema_with_tables_error() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;
@@ -466,7 +466,7 @@ async fn delete_schema_with_tables_error() {
 #[tokio::test]
 async fn delete_share_with_schemas_error() {
     let docker = Cli::default();
-    let dynamo = DynamoDb::default();
+    let dynamo = DynamoDb;
     let container = docker.run(dynamo);
 
     let client = init_client(&container).await;

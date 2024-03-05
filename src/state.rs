@@ -132,7 +132,7 @@ impl SharingServerState {
             .get_table_version_number(table.storage_path(), version)
             .await?;
 
-        Ok(table_version.into())
+        Ok(table_version)
     }
 
     /// Get the metadata of a table.

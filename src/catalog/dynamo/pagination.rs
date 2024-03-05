@@ -18,11 +18,11 @@ struct DynamoKey {
 pub fn token_to_key(token: &str) -> HashMap<String, AttributeValue> {
     let decoded_token = general_purpose::URL_SAFE.decode(token).unwrap();
     let key: DynamoKey = serde_json::from_slice(&decoded_token).unwrap();
-    let map = HashMap::from_iter([
+    
+    HashMap::from_iter([
         (String::from("PK"), AttributeValue::S(key.pk)),
         (String::from("SK"), AttributeValue::S(key.sk)),
-    ]);
-    map
+    ])
 }
 
 /// Convert a DynamoDB key to a pagination token
@@ -32,7 +32,7 @@ pub fn key_to_token(key: &HashMap<String, AttributeValue>) -> String {
         sk: key.get("SK").unwrap().as_s().unwrap().to_owned(),
     };
     let json = serde_json::to_vec(&dynamo_key).unwrap();
-    general_purpose::URL_SAFE.encode(&json)
+    general_purpose::URL_SAFE.encode(json)
 }
 
 pub trait PaginationExt {
