@@ -12,7 +12,7 @@ use axum::{
 use crate::extract::Capabilities;
 use crate::{
     auth::ClientId,
-    catalog::Pagination,
+    share_reader::Pagination,
     error::{Result, ServerError},
     reader::Version,
     response::{

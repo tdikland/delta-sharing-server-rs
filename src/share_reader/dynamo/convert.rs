@@ -4,7 +4,7 @@ use aws_sdk_dynamodb::types::AttributeValue;
 
 use crate::{
     auth::ClientId,
-    catalog::{CatalogError, Page, SchemaInfo, ShareInfo, TableInfo},
+    share_reader::{CatalogError, Page, Schema, Share, Table},
 };
 
 use super::{config::DynamoCatalogConfig, pagination::key_to_token};
@@ -29,7 +29,7 @@ pub fn to_share_key(
 
 pub fn to_share_item(
     client_id: ClientId,
-    share: ShareInfo,
+    share: Share,
     config: &DynamoCatalogConfig,
 ) -> HashMap<String, AttributeValue> {
     let mut item = HashMap::with_capacity(4);
@@ -52,22 +52,22 @@ pub fn to_share_item(
 pub fn to_share_info(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<ShareInfo, CatalogError> {
+) -> Result<Share, CatalogError> {
     let share_name = extract_from_item(item, config.share_name())?;
     let share_id = extract_from_item_opt(item, config.share_id());
 
-    Ok(ShareInfo::new(share_name, share_id))
+    Ok(Share::new(share_name, share_id))
 }
 
 pub fn to_share_info_page(
     items: &[HashMap<String, AttributeValue>],
     last_key: Option<&HashMap<String, AttributeValue>>,
     config: &DynamoCatalogConfig,
-) -> Result<Page<ShareInfo>, CatalogError> {
+) -> Result<Page<Share>, CatalogError> {
     let shares = items
         .iter()
         .map(|item| to_share_info(item, config))
-        .collect::<Result<Vec<ShareInfo>, CatalogError>>()?;
+        .collect::<Result<Vec<Share>, CatalogError>>()?;
 
     Ok(Page::new(shares, last_key.map(key_to_token)))
 }
@@ -93,7 +93,7 @@ pub fn to_schema_key(
 
 pub fn to_schema_item(
     client_id: ClientId,
-    schema: SchemaInfo,
+    schema: Schema,
     config: &DynamoCatalogConfig,
 ) -> HashMap<String, AttributeValue> {
     let mut item = HashMap::with_capacity(4);
@@ -114,22 +114,22 @@ pub fn to_schema_item(
 pub fn to_schema_info(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<SchemaInfo, CatalogError> {
+) -> Result<Schema, CatalogError> {
     let share_name = extract_from_item(item, config.share_name())?;
     let schema_name = extract_from_item(item, config.schema_name())?;
 
-    Ok(SchemaInfo::new(schema_name, share_name))
+    Ok(Schema::new(schema_name, share_name))
 }
 
 pub fn to_schema_info_page(
     items: &[HashMap<String, AttributeValue>],
     last_key: Option<&HashMap<String, AttributeValue>>,
     config: &DynamoCatalogConfig,
-) -> Result<Page<SchemaInfo>, CatalogError> {
+) -> Result<Page<Schema>, CatalogError> {
     let schemas = items
         .iter()
         .map(|item| to_schema_info(item, config))
-        .collect::<Result<Vec<SchemaInfo>, CatalogError>>()?;
+        .collect::<Result<Vec<Schema>, CatalogError>>()?;
 
     Ok(Page::new(schemas, last_key.map(key_to_token)))
 }
@@ -159,7 +159,7 @@ pub fn to_table_key(
 
 pub fn to_table_item(
     client_id: ClientId,
-    table: TableInfo,
+    table: Table,
     config: &DynamoCatalogConfig,
 ) -> HashMap<String, AttributeValue> {
     let mut item = HashMap::with_capacity(4);
@@ -194,7 +194,7 @@ pub fn to_table_item(
 pub fn to_table_info(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<TableInfo, CatalogError> {
+) -> Result<Table, CatalogError> {
     let share_name = extract_from_item(item, config.share_name())?;
     let schema_name = extract_from_item(item, config.schema_name())?;
     let table_name = extract_from_item(item, config.table_name())?;
@@ -202,7 +202,7 @@ pub fn to_table_info(
     let _id = extract_from_item_opt(item, config.table_id());
     let _share_id = extract_from_item_opt(item, config.share_id());
 
-    Ok(TableInfo::new(
+    Ok(Table::new(
         table_name,
         schema_name,
         share_name,
@@ -214,11 +214,11 @@ pub fn to_table_info_page(
     items: &[HashMap<String, AttributeValue>],
     last_key: Option<&HashMap<String, AttributeValue>>,
     config: &DynamoCatalogConfig,
-) -> Result<Page<TableInfo>, CatalogError> {
+) -> Result<Page<Table>, CatalogError> {
     let tables = items
         .iter()
         .map(|item| to_table_info(item, config))
-        .collect::<Result<Vec<TableInfo>, CatalogError>>()?;
+        .collect::<Result<Vec<Table>, CatalogError>>()?;
 
     Ok(Page::new(tables, last_key.map(key_to_token)))
 }
@@ -275,7 +275,7 @@ mod test {
     fn share_item() {
         let config = DynamoCatalogConfig::new("test-table");
         let client_id = ClientId::known("client");
-        let share = ShareInfo::new("foo".to_owned(), Some("id".to_owned()));
+        let share = Share::new("foo".to_owned(), Some("id".to_owned()));
 
         let item = to_share_item(client_id, share, &config);
         assert_eq!(item.len(), 4);
@@ -289,7 +289,7 @@ mod test {
     fn schema_item() {
         let config = DynamoCatalogConfig::new("test-table");
         let client_id = ClientId::known("client");
-        let schema = SchemaInfo::new("bar".to_owned(), "foo".to_owned());
+        let schema = Schema::new("bar".to_owned(), "foo".to_owned());
 
         let item = to_schema_item(client_id, schema, &config);
         assert_eq!(item.len(), 4);

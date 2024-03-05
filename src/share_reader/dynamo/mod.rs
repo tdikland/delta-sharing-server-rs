@@ -2,7 +2,7 @@
 
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
-use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
+use super::{CatalogError, Page, Pagination, Schema, Share, ShareReader, Table};
 use crate::auth::ClientId;
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
@@ -45,11 +45,7 @@ impl DynamoCatalog {
     }
 
     /// Write a new share to the catalog
-    pub async fn _put_share(
-        &self,
-        client_id: ClientId,
-        share: ShareInfo,
-    ) -> Result<(), CatalogError> {
+    pub async fn _put_share(&self, client_id: ClientId, share: Share) -> Result<(), CatalogError> {
         let share_item = convert::to_share_item(client_id, share, &self.config);
         self.client
             .put_item()
@@ -69,7 +65,7 @@ impl DynamoCatalog {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, CatalogError> {
+    ) -> Result<Share, CatalogError> {
         let key = convert::to_share_key(client_id, share_name, &self.config);
         let res = self
             .client
@@ -95,7 +91,7 @@ impl DynamoCatalog {
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<ShareInfo>, CatalogError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let res = self
             .client
             .query()
@@ -159,7 +155,7 @@ impl DynamoCatalog {
     pub async fn _put_schema(
         &self,
         client_id: ClientId,
-        schema: SchemaInfo,
+        schema: Schema,
     ) -> Result<(), CatalogError> {
         let item = convert::to_schema_item(client_id.clone(), schema.clone(), &self.config);
         self.client
@@ -200,7 +196,7 @@ impl DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
-    ) -> Result<SchemaInfo, CatalogError> {
+    ) -> Result<Schema, CatalogError> {
         let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
         let res = self
             .client
@@ -230,7 +226,7 @@ impl DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<SchemaInfo>, CatalogError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let res = self
             .client
             .query()
@@ -296,11 +292,7 @@ impl DynamoCatalog {
     }
 
     /// Write a new table to the catalog
-    pub async fn _put_table(
-        &self,
-        client_id: ClientId,
-        table: TableInfo,
-    ) -> Result<(), CatalogError> {
+    pub async fn _put_table(&self, client_id: ClientId, table: Table) -> Result<(), CatalogError> {
         let item = convert::to_table_item(client_id.clone(), table.clone(), &self.config);
         self.client
             .transact_write_items()
@@ -342,7 +334,7 @@ impl DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<TableInfo, CatalogError> {
+    ) -> Result<Table, CatalogError> {
         let key =
             convert::to_table_key(client_id, share_name, schema_name, table_name, &self.config);
         let res = self
@@ -374,7 +366,7 @@ impl DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let res = self
             .client
             .query()
@@ -397,7 +389,7 @@ impl DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let res = self
             .client
             .query()
@@ -427,12 +419,12 @@ impl DynamoCatalog {
 }
 
 #[async_trait]
-impl Catalog for DynamoCatalog {
+impl ShareReader for DynamoCatalog {
     async fn list_shares(
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<ShareInfo>, CatalogError> {
+    ) -> Result<Page<Share>, CatalogError> {
         self._query_shares(client_id, pagination).await
     }
 
@@ -441,7 +433,7 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<SchemaInfo>, CatalogError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         self._query_schemas(client_id, share_name, pagination).await
     }
 
@@ -450,7 +442,7 @@ impl Catalog for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         self._query_tables_in_share(client_id, share_name, pagination)
             .await
     }
@@ -461,7 +453,7 @@ impl Catalog for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         self._query_tables_in_schema(client_id, share_name, schema_name, pagination)
             .await
     }
@@ -470,7 +462,7 @@ impl Catalog for DynamoCatalog {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, CatalogError> {
+    ) -> Result<Share, CatalogError> {
         self._get_share(client_id, share_name).await
     }
 
@@ -480,7 +472,7 @@ impl Catalog for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<TableInfo, CatalogError> {
+    ) -> Result<Table, CatalogError> {
         self._get_table(client_id, share_name, schema_name, table_name)
             .await
     }

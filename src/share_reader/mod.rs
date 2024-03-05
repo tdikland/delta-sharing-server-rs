@@ -1,4 +1,18 @@
 //! Types and traits for managing shared objects.
+//!
+//! Every Delta Sharing server needs to know which shares, schemas and tables
+//! are available to be shared with the client. The server also needs to know
+//! where the specific tables are stored. This module provides the traits and
+//! types that are used by the sharing server to list and get information about
+//! the shared objects.
+//!
+//! The [`ShareReader`] trait is implemented by the different share managers
+//! that each may represent a different backing store for the shared objects.
+//! The [`ShareReader`] trait provides methods to list shares, schemas and
+//! tables and to get details about a specific share or table. The
+//! [`ClientId`]` type is used to identify the client that is requesting the
+//! shared objects. Based on the passed [`ClientId`] the share manager can
+//! decide which shares, schemas and tables are available to the client.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -10,81 +24,96 @@ pub mod dynamo;
 pub mod file;
 pub mod postgres;
 
-/// Trait implemented by Share managers that each represent a different backing
-/// store for the shared objects.
+/// Trait for listing and reading shared objects in the Delta Sharing server.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait Catalog: Send + Sync {
-    /// Fetch a list of shares stored on the sharing server store. The list
-    /// cursor is used to limit the amount of returned shares and to resume
-    /// listing from a specified point in the collection.
+pub trait ShareReader: Send + Sync {
+    /// Return a page of shares stored on the sharing server store accessible
+    /// for the given client. The pagination argument is used to limit the
+    /// amount of returned shares in this call and to resume listing from a
+    /// specified point in the collection of shares.
     async fn list_shares(
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<ShareInfo>, CatalogError>;
+    ) -> Result<Page<Share>, CatalogError>;
 
-    /// Fetch a list of schemas stored on the sharing server store under a
-    /// spcific share. The list cursor is used to limit the amount of returned
-    /// schemas and to resume listing from a specified point in the collection.
+    /// Return a page of schemas stored on the sharing server store that belong
+    /// to the specified share and are accessible for the given client. The
+    /// pagination argument is used to limit the amount of returned schemas in
+    /// this call and to resume listing from a specified point in the
+    /// collection of schemas.
     async fn list_schemas(
         &self,
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<SchemaInfo>, CatalogError>;
+    ) -> Result<Page<Schema>, CatalogError>;
 
-    /// Fetch a list of tables stored on the sharing server store under a
-    /// spcific share combination. The list cursor is used to limit
-    /// the amount of returned tables and to resume listing from a specified
-    /// point in the collection.
+    /// Return a page of tables stored on the sharing server store that belong
+    /// to the specified share and are accessible for the given client. The
+    /// pagination argument is used to limit the amount of returned tables in
+    /// this call and to resume listing from a specified point in the
+    /// collection of tables.
     async fn list_tables_in_share(
         &self,
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError>;
+    ) -> Result<Page<Table>, CatalogError>;
 
-    /// Fetch a list of tables stored on the sharing server store under a
-    /// spcific share + schema combination. The list cursor is used to limit
-    /// the amount of returned tables and to resume listing from a specified
-    /// point in the collection.
+    /// Return a page of tables stored on the sharing server store that belong
+    /// to the specified share+schema and are accessible for the given client.
+    /// The pagination argument is used to limit the amount of returned tables
+    /// in this call and to resume listing from a specified point in the
+    /// collection of tables.
     async fn list_tables_in_schema(
         &self,
         client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError>;
+    ) -> Result<Page<Table>, CatalogError>;
 
-    /// Get share details by name
+    /// Return a share with the specified name if it is accessible for the
+    /// given client.
     async fn get_share(
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, CatalogError>;
+    ) -> Result<Share, CatalogError>;
 
-    /// Get table specifics for a combination of share + schema + name.
+    /// Return a table with the specified name within the specified share and
+    /// schema if it is accessible for the given client.
     async fn get_table(
         &self,
         client_id: &ClientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<TableInfo, CatalogError>;
+    ) -> Result<Table, CatalogError>;
 }
 
 /// Pagination parameters for listing shared objects.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {
-    pub(crate) max_results: Option<u32>,
-    pub(crate) page_token: Option<String>,
+    max_results: Option<u32>,
+    page_token: Option<String>,
 }
 
 impl Pagination {
     /// Create a new pagination object with the specified maximum results and
     /// page token.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing::catalog::Pagination;
+    ///
+    /// let pagination = Pagination::new(Some(43), Some("foo".to_string()));
+    /// assert_eq!(pagination.max_results(), Some(43));
+    /// assert_eq!(pagination.page_token(), Some("foo"));
+    /// ```
     pub fn new(max_results: Option<u32>, page_token: Option<String>) -> Self {
         Self {
             max_results,
@@ -93,11 +122,28 @@ impl Pagination {
     }
 
     /// Return the maximum amount of results to be returned in a single page.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing::catalog::Pagination;
+    ///
+    /// let pagination = Pagination::new(Some(43), None);
+    /// assert_eq!(pagination.max_results(), Some(43));
+    /// ```
     pub fn max_results(&self) -> Option<u32> {
         self.max_results
     }
 
-    /// Return the token that can be used to resume listing from a specific point
+    /// Return the token that can be used to resume listing from the specified
+    /// point in the collection of shared objects.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing::catalog::Pagination;
+    ///
+    /// let pagination = Pagination::new(None, Some("foo".to_string()));
+    /// assert_eq!(pagination.page_token(), Some("foo"));
+    /// ```
     pub fn page_token(&self) -> Option<&str> {
         self.page_token.as_deref()
     }
@@ -147,12 +193,12 @@ impl<T> Page<T> {
 
 /// Information about a share stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShareInfo {
-    pub(crate) name: String,
-    pub(crate) id: Option<String>,
+pub struct Share {
+    name: String,
+    id: Option<String>,
 }
 
-impl ShareInfo {
+impl Share {
     /// Create a new share info with the specified name and id.
     pub fn new(name: String, id: Option<String>) -> Self {
         Self { name, id }
@@ -171,13 +217,13 @@ impl ShareInfo {
 
 /// Information about a schema stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SchemaInfo {
+pub struct Schema {
     pub(crate) id: Option<String>,
     pub(crate) name: String,
     pub(crate) share_name: String,
 }
 
-impl SchemaInfo {
+impl Schema {
     /// Create a new schema info with the specified name and share name.
     pub fn new(name: String, share_name: String) -> Self {
         Self {
@@ -214,7 +260,7 @@ impl SchemaInfo {
 
 /// Information about a table stored on the sharing server store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TableInfo {
+pub struct Table {
     pub(crate) name: String,
     pub(crate) schema_name: String,
     pub(crate) share_name: String,
@@ -223,7 +269,7 @@ pub struct TableInfo {
     pub(crate) share_id: Option<String>,
 }
 
-impl TableInfo {
+impl Table {
     /// Create a new table info with the specified name, schema name, share name
     pub fn new(
         name: String,

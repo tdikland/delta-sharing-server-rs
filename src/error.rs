@@ -3,7 +3,7 @@
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
-use crate::{catalog::CatalogError, reader::TableReaderError};
+use crate::{share_reader::CatalogError, reader::TableReaderError};
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
 

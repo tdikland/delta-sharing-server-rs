@@ -7,7 +7,7 @@ use std::{fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
+use super::{CatalogError, Page, Pagination, Schema, Share, ShareReader, Table};
 use crate::auth::ClientId;
 
 /// The file format where the share configuration is stored.
@@ -76,12 +76,12 @@ impl FileCatalog {
 }
 
 #[async_trait::async_trait]
-impl Catalog for FileCatalog {
+impl ShareReader for FileCatalog {
     async fn list_shares(
         &self,
         _client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<ShareInfo>, CatalogError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let offset = pagination
             .page_token()
             .map(|t| t.parse::<usize>().unwrap())
@@ -114,7 +114,7 @@ impl Catalog for FileCatalog {
         &self,
         _client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, CatalogError> {
+    ) -> Result<Share, CatalogError> {
         self.config
             .shares()
             .into_iter()
@@ -129,7 +129,7 @@ impl Catalog for FileCatalog {
         _client_id: &ClientId,
         share_name: &str,
         _pagination: &Pagination,
-    ) -> Result<Page<SchemaInfo>, CatalogError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let schemas = self.config.schemas(share_name);
         Ok(Page::new(schemas, None))
     }
@@ -139,7 +139,7 @@ impl Catalog for FileCatalog {
         _client_id: &ClientId,
         share_name: &str,
         _pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let tables = self.config.tables_in_share(share_name);
         Ok(Page::new(tables, None))
     }
@@ -150,7 +150,7 @@ impl Catalog for FileCatalog {
         share_name: &str,
         schema_name: &str,
         _cursor: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let tables = self.config.tables_in_schema(share_name, schema_name);
         Ok(Page::new(tables, None))
     }
@@ -161,7 +161,7 @@ impl Catalog for FileCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<TableInfo, CatalogError> {
+    ) -> Result<Table, CatalogError> {
         let tables = self.config.tables_in_schema(share_name, schema_name);
         tables
             .into_iter()
@@ -180,14 +180,14 @@ struct ShareFile {
 }
 
 impl ShareFile {
-    fn shares(&self) -> Vec<ShareInfo> {
+    fn shares(&self) -> Vec<Share> {
         self.shares
             .iter()
             .map(|share| share.to_share_info())
             .collect()
     }
 
-    fn schemas(&self, share_name: &str) -> Vec<SchemaInfo> {
+    fn schemas(&self, share_name: &str) -> Vec<Schema> {
         if let Some(share) = self.shares.iter().find(|share| share.name == share_name) {
             share
                 .schemas()
@@ -199,7 +199,7 @@ impl ShareFile {
         }
     }
 
-    fn tables_in_share(&self, share_name: &str) -> Vec<TableInfo> {
+    fn tables_in_share(&self, share_name: &str) -> Vec<Table> {
         if let Some(share) = self.shares.iter().find(|share| share.name == share_name) {
             share
                 .schemas()
@@ -216,7 +216,7 @@ impl ShareFile {
         }
     }
 
-    fn tables_in_schema(&self, share_name: &str, schema_name: &str) -> Vec<TableInfo> {
+    fn tables_in_schema(&self, share_name: &str, schema_name: &str) -> Vec<Table> {
         let Some(share) = self.shares.iter().find(|share| share.name == share_name) else {
             return vec![];
         };
@@ -248,8 +248,8 @@ impl ShareInFile {
         &self.schemas
     }
 
-    fn to_share_info(&self) -> ShareInfo {
-        ShareInfo::new(self.name.clone(), None)
+    fn to_share_info(&self) -> Share {
+        Share::new(self.name.clone(), None)
     }
 }
 
@@ -264,8 +264,8 @@ impl SchemaInFile {
         &self.tables
     }
 
-    fn to_schema_info(&self, share_name: &str) -> SchemaInfo {
-        SchemaInfo::new(self.name.clone(), share_name.to_string())
+    fn to_schema_info(&self, share_name: &str) -> Schema {
+        Schema::new(self.name.clone(), share_name.to_string())
     }
 }
 
@@ -277,8 +277,8 @@ struct TableInFile {
 }
 
 impl TableInFile {
-    fn to_table_info(&self, share_name: &str, schema_name: &str) -> TableInfo {
-        TableInfo::new(
+    fn to_table_info(&self, share_name: &str, schema_name: &str) -> Table {
+        Table::new(
             self.name.clone(),
             schema_name.to_string(),
             share_name.to_string(),
@@ -380,7 +380,7 @@ mod tests {
                 .get_share(&ClientId::Anonymous, "share1")
                 .await
                 .unwrap(),
-            ShareInfo::new("share1".to_owned(), None)
+            Share::new("share1".to_owned(), None)
         );
     }
 
@@ -394,7 +394,7 @@ mod tests {
                 .await
                 .unwrap(),
             Page::new(
-                vec![SchemaInfo::new("schema1".to_owned(), "share1".to_owned())],
+                vec![Schema::new("schema1".to_owned(), "share1".to_owned())],
                 None
             )
         );
@@ -411,13 +411,13 @@ mod tests {
                 .unwrap(),
             Page::new(
                 vec![
-                    TableInfo::new(
+                    Table::new(
                         "table1".to_owned(),
                         "schema1".to_owned(),
                         "share1".to_owned(),
                         "s3a://<bucket-name>/<the-table-path>".to_owned()
                     ),
-                    TableInfo::new(
+                    Table::new(
                         "table2".to_owned(),
                         "schema1".to_owned(),
                         "share1".to_owned(),
@@ -441,13 +441,13 @@ mod tests {
                 .unwrap(),
             Page::new(
                 vec![
-                    TableInfo::new(
+                    Table::new(
                         "table1".to_owned(),
                         "schema1".to_owned(),
                         "share1".to_owned(),
                         "s3a://<bucket-name>/<the-table-path>".to_owned()
                     ),
-                    TableInfo::new(
+                    Table::new(
                         "table2".to_owned(),
                         "schema1".to_owned(),
                         "share1".to_owned(),
@@ -469,7 +469,7 @@ mod tests {
                 .get_table(&ClientId::Anonymous, "share1", "schema1", "table1")
                 .await
                 .unwrap(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),

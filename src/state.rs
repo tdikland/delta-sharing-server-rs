@@ -4,24 +4,24 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     auth::ClientId,
-    catalog::{Catalog, Page, Pagination, SchemaInfo, ShareInfo, TableInfo},
     error::ServerError,
     protocol::table::{SignedTableData, TableMetadata, TableVersionNumber},
     reader::{TableReader, Version},
+    share_reader::{Page, Pagination, Schema, Share, ShareReader, Table},
     signer::UrlSigner,
 };
 
 /// State of the sharing server.
 #[derive(Clone)]
 pub struct SharingServerState {
-    catalog: Arc<dyn Catalog>,
+    catalog: Arc<dyn ShareReader>,
     reader: Arc<dyn TableReader>,
     url_signers: HashMap<String, Arc<dyn UrlSigner>>,
 }
 
 impl SharingServerState {
     /// Create a new sharing server state.
-    pub fn new(catalog: Arc<dyn Catalog>, reader: Arc<dyn TableReader>) -> Self {
+    pub fn new(catalog: Arc<dyn ShareReader>, reader: Arc<dyn TableReader>) -> Self {
         Self {
             catalog,
             reader,
@@ -30,7 +30,7 @@ impl SharingServerState {
     }
 
     /// Get the catalog from the state.
-    pub fn catalog(&self) -> Arc<dyn Catalog> {
+    pub fn catalog(&self) -> Arc<dyn ShareReader> {
         self.catalog.clone()
     }
 
@@ -54,7 +54,7 @@ impl SharingServerState {
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<ShareInfo>, ServerError> {
+    ) -> Result<Page<Share>, ServerError> {
         self.catalog
             .list_shares(client_id, pagination)
             .await
@@ -66,7 +66,7 @@ impl SharingServerState {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, ServerError> {
+    ) -> Result<Share, ServerError> {
         self.catalog
             .get_share(client_id, share_name)
             .await
@@ -79,7 +79,7 @@ impl SharingServerState {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<SchemaInfo>, ServerError> {
+    ) -> Result<Page<Schema>, ServerError> {
         Ok(self
             .catalog
             .list_schemas(client_id, share_name, pagination)
@@ -92,7 +92,7 @@ impl SharingServerState {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, ServerError> {
+    ) -> Result<Page<Table>, ServerError> {
         Ok(self
             .catalog
             .list_tables_in_share(client_id, share_name, pagination)
@@ -106,7 +106,7 @@ impl SharingServerState {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<TableInfo>, ServerError> {
+    ) -> Result<Page<Table>, ServerError> {
         Ok(self
             .catalog
             .list_tables_in_schema(client_id, share_name, schema_name, pagination)
@@ -186,23 +186,23 @@ impl SharingServerState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{catalog::MockCatalog, reader::MockTableReader};
+    use crate::{reader::MockTableReader, share_reader::MockShareReader};
     use insta::assert_json_snapshot;
 
     #[tokio::test]
     async fn list_shares() {
-        let mut mock_table_manager = MockCatalog::new();
+        let mut mock_table_manager = MockShareReader::new();
         mock_table_manager
             .expect_list_shares()
             .once()
             .returning(|_, _| {
                 let shares = Page::new(
                     vec![
-                        ShareInfo::new(
+                        Share::new(
                             "vaccine_share".to_owned(),
                             Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
                         ),
-                        ShareInfo::new(
+                        Share::new(
                             "sales_share".to_owned(),
                             Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
                         ),

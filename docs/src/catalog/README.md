@@ -1,0 +1,1 @@
+The ShareReader is the component that every sharing server needs and is responsible for reading which shares, schemas and tables are available on the server for a specific client.

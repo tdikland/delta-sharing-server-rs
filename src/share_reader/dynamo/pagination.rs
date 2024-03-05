@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use aws_sdk_dynamodb::{operation::query::builders::QueryFluentBuilder, types::AttributeValue};
 
-use crate::catalog::Pagination;
+use crate::share_reader::Pagination;
 
 /// A struct to represent the primary key of the DynamoDB table
 #[derive(Serialize, Deserialize)]

@@ -8,9 +8,9 @@ use aws_sdk_dynamodb::{
 };
 use delta_sharing_server::{
     auth::ClientId,
-    catalog::{
+    share_reader::{
         dynamo::{DynamoCatalog, DynamoCatalogConfig},
-        Catalog, Pagination, SchemaInfo, ShareInfo, TableInfo,
+        Pagination, Schema, Share, ShareReader, Table,
     },
 };
 use testcontainers::{clients::Cli, Container, Image};
@@ -35,8 +35,8 @@ async fn test_list_shares() {
     assert_eq!(
         anon_shares.items(),
         &[
-            ShareInfo::new("share1".to_owned(), None),
-            ShareInfo::new("share2".to_owned(), Some("share_id2".to_owned()))
+            Share::new("share1".to_owned(), None),
+            Share::new("share2".to_owned(), Some("share_id2".to_owned()))
         ]
     );
     assert_eq!(anon_shares.next_page_token(), None);
@@ -50,9 +50,9 @@ async fn test_list_shares() {
     assert_eq!(
         existing_shares.items(),
         &[
-            ShareInfo::new("share3".to_owned(), None),
-            ShareInfo::new("share4".to_owned(), Some("share_id4".to_owned())),
-            ShareInfo::new("share5".to_owned(), None)
+            Share::new("share3".to_owned(), None),
+            Share::new("share4".to_owned(), Some("share_id4".to_owned())),
+            Share::new("share5".to_owned(), None)
         ]
     );
     assert_eq!(existing_shares.next_page_token(), None);
@@ -137,8 +137,8 @@ async fn list_schemas() {
     assert_eq!(
         schemas.items(),
         &[
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
-            SchemaInfo::new("schema2".to_owned(), "share1".to_owned())
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema2".to_owned(), "share1".to_owned())
         ]
     );
     assert_eq!(schemas.next_page_token(), None);
@@ -219,13 +219,13 @@ async fn list_tables_in_schema() {
     assert_eq!(
         tables.items(),
         &[
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
                 "s3://bucket1/path1".to_owned(),
             ),
-            TableInfo::new(
+            Table::new(
                 "table2".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -272,7 +272,7 @@ async fn get_share() {
 
     let client = ClientId::anonymous();
     let share = catalog.get_share(&client, "share1").await.unwrap();
-    assert_eq!(share, ShareInfo::new("share1".to_owned(), None));
+    assert_eq!(share, Share::new("share1".to_owned(), None));
 
     let share_not_found_error = catalog
         .get_share(&client, "does-not-exist")
@@ -301,7 +301,7 @@ async fn get_table() {
         .unwrap();
     assert_eq!(
         table,
-        TableInfo::new(
+        Table::new(
             "table1".to_owned(),
             "schema1".to_owned(),
             "share1".to_owned(),
@@ -332,24 +332,21 @@ async fn put_schema_without_share_error() {
     let res = catalog
         ._put_schema(
             ClientId::anonymous(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await;
     assert!(res.is_err());
 
     // Writing a schema with the parent share should succeed
     catalog
-        ._put_share(
-            ClientId::anonymous(),
-            ShareInfo::new("share1".to_owned(), None),
-        )
+        ._put_share(ClientId::anonymous(), Share::new("share1".to_owned(), None))
         .await
         .unwrap();
 
     let res = catalog
         ._put_schema(
             ClientId::anonymous(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await;
     assert!(res.is_ok());
@@ -368,7 +365,7 @@ async fn put_table_without_schema_error() {
     let res = catalog
         ._put_table(
             ClientId::anonymous(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -380,16 +377,13 @@ async fn put_table_without_schema_error() {
 
     // Writing a table with the parent schema should succeed
     catalog
-        ._put_share(
-            ClientId::anonymous(),
-            ShareInfo::new("share1".to_owned(), None),
-        )
+        ._put_share(ClientId::anonymous(), Share::new("share1".to_owned(), None))
         .await
         .unwrap();
     catalog
         ._put_schema(
             ClientId::anonymous(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await
         .unwrap();
@@ -397,7 +391,7 @@ async fn put_table_without_schema_error() {
     let res = catalog
         ._put_table(
             ClientId::anonymous(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -421,20 +415,20 @@ async fn delete_schema_with_tables_error() {
 
     // Writing a table with the parent schema should succeed
     catalog
-        ._put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
+        ._put_share(client_id.clone(), Share::new("share1".to_owned(), None))
         .await
         .unwrap();
     catalog
         ._put_schema(
             client_id.clone(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await
         .unwrap();
     catalog
         ._put_table(
             client_id.clone(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -475,13 +469,13 @@ async fn delete_share_with_schemas_error() {
 
     // Writing a schema with the parent share should succeed
     catalog
-        ._put_share(client_id.clone(), ShareInfo::new("share1".to_owned(), None))
+        ._put_share(client_id.clone(), Share::new("share1".to_owned(), None))
         .await
         .unwrap();
     catalog
         ._put_schema(
             client_id.clone(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await
         .unwrap();
@@ -582,16 +576,13 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
 
     // Create public shares
     catalog
-        ._put_share(
-            anon_client.clone(),
-            ShareInfo::new("share1".to_owned(), None),
-        )
+        ._put_share(anon_client.clone(), Share::new("share1".to_owned(), None))
         .await
         .unwrap();
     catalog
         ._put_share(
             anon_client.clone(),
-            ShareInfo::new("share2".to_owned(), Some("share_id2".to_owned())),
+            Share::new("share2".to_owned(), Some("share_id2".to_owned())),
         )
         .await
         .unwrap();
@@ -600,14 +591,14 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
     catalog
         ._put_schema(
             anon_client.clone(),
-            SchemaInfo::new("schema1".to_owned(), "share1".to_owned()),
+            Schema::new("schema1".to_owned(), "share1".to_owned()),
         )
         .await
         .unwrap();
     catalog
         ._put_schema(
             anon_client.clone(),
-            SchemaInfo::new("schema2".to_owned(), "share1".to_owned()),
+            Schema::new("schema2".to_owned(), "share1".to_owned()),
         )
         .await
         .unwrap();
@@ -616,7 +607,7 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
     catalog
         ._put_table(
             anon_client.clone(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -628,7 +619,7 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
     catalog
         ._put_table(
             anon_client.clone(),
-            TableInfo::new(
+            Table::new(
                 "table2".to_owned(),
                 "schema1".to_owned(),
                 "share1".to_owned(),
@@ -640,7 +631,7 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
     catalog
         ._put_table(
             anon_client.clone(),
-            TableInfo::new(
+            Table::new(
                 "table1".to_owned(),
                 "schema2".to_owned(),
                 "share1".to_owned(),
@@ -652,24 +643,18 @@ async fn seed_catalog(catalog: &DynamoCatalog) {
 
     // Create private shares
     catalog
-        ._put_share(
-            auth_client.clone(),
-            ShareInfo::new("share3".to_owned(), None),
-        )
+        ._put_share(auth_client.clone(), Share::new("share3".to_owned(), None))
         .await
         .unwrap();
     catalog
         ._put_share(
             auth_client.clone(),
-            ShareInfo::new("share4".to_owned(), Some("share_id4".to_owned())),
+            Share::new("share4".to_owned(), Some("share_id4".to_owned())),
         )
         .await
         .unwrap();
     catalog
-        ._put_share(
-            auth_client.clone(),
-            ShareInfo::new("share5".to_owned(), None),
-        )
+        ._put_share(auth_client.clone(), Share::new("share5".to_owned(), None))
         .await
         .unwrap();
 }

@@ -13,7 +13,7 @@ use self::model::{
     ShareModel, TableInfoModel, TableModel,
 };
 
-use super::{Catalog, CatalogError, Page, Pagination, SchemaInfo, ShareInfo, TableInfo};
+use super::{CatalogError, Page, Pagination, Schema, Share, ShareReader, Table};
 
 mod model;
 
@@ -831,19 +831,19 @@ impl TryFrom<Pagination> for PostgresCursor {
 }
 
 #[async_trait]
-impl Catalog for PostgresCatalog {
+impl ShareReader for PostgresCatalog {
     async fn list_shares(
         &self,
         client_id: &ClientId,
         cursor: &Pagination,
-    ) -> Result<Page<ShareInfo>, CatalogError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let shares_info_models = self.select_shares(client_id, &pg_cursor).await?;
 
         let shares = shares_info_models
             .into_iter()
-            .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
+            .map(|s| Share::new(s.name, Some(s.id.to_string())))
             .collect::<Vec<_>>();
         let next_page_token = shares
             .get(pg_cursor.limit() as usize - 1)
@@ -857,7 +857,7 @@ impl Catalog for PostgresCatalog {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<SchemaInfo>, CatalogError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let schemas_models = self
@@ -866,7 +866,7 @@ impl Catalog for PostgresCatalog {
 
         let schemas = schemas_models
             .into_iter()
-            .map(|s| SchemaInfo::new_with_id(s.id.to_string(), s.name, share_name.to_string()))
+            .map(|s| Schema::new_with_id(s.id.to_string(), s.name, share_name.to_string()))
             .collect::<Vec<_>>();
 
         let next_page_token = schemas
@@ -881,7 +881,7 @@ impl Catalog for PostgresCatalog {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let table_models = self
@@ -890,7 +890,7 @@ impl Catalog for PostgresCatalog {
 
         let tables = table_models
             .into_iter()
-            .map(|t| TableInfo {
+            .map(|t| Table {
                 id: Some(t.id.to_string()),
                 share_id: Some(t.share_id.to_string()),
                 name: t.name,
@@ -912,7 +912,7 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<TableInfo>, CatalogError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
             .map_err(|_| CatalogError::MalformedContinuationToken)?;
         let table_models = self
@@ -921,7 +921,7 @@ impl Catalog for PostgresCatalog {
 
         let tables = table_models
             .into_iter()
-            .map(|t| TableInfo {
+            .map(|t| Table {
                 id: Some(t.id.to_string()),
                 share_id: Some(t.share_id.to_string()),
                 name: t.name,
@@ -941,10 +941,10 @@ impl Catalog for PostgresCatalog {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<ShareInfo, CatalogError> {
+    ) -> Result<Share, CatalogError> {
         self.select_share_by_name(client_id, share_name)
             .await?
-            .map(|s| ShareInfo::new(s.name, Some(s.id.to_string())))
+            .map(|s| Share::new(s.name, Some(s.id.to_string())))
             .ok_or(CatalogError::ShareNotFound {
                 share_name: share_name.to_string(),
             })
@@ -956,10 +956,10 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<TableInfo, CatalogError> {
+    ) -> Result<Table, CatalogError> {
         self.select_table_by_name(client_id, share_name, schema_name, table_name)
             .await?
-            .map(|t| TableInfo {
+            .map(|t| Table {
                 id: Some(t.id.to_string()),
                 share_id: Some(t.share_id.to_string()),
                 name: t.name,
