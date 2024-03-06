@@ -20,8 +20,8 @@ use std::{error::Error, fmt::Display};
 
 use crate::auth::ClientId;
 
-pub mod dynamo;
-pub mod file;
+// pub mod dynamo;
+// pub mod file;
 pub mod postgres;
 
 /// Trait for listing and reading shared objects in the Delta Sharing server.
@@ -36,7 +36,7 @@ pub trait ShareReader: Send + Sync {
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, CatalogError>;
+    ) -> Result<Page<Share>, ShareReaderError>;
 
     /// Return a page of schemas stored on the sharing server store that belong
     /// to the specified share and are accessible for the given client. The
@@ -48,7 +48,7 @@ pub trait ShareReader: Send + Sync {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Schema>, CatalogError>;
+    ) -> Result<Page<Schema>, ShareReaderError>;
 
     /// Return a page of tables stored on the sharing server store that belong
     /// to the specified share and are accessible for the given client. The
@@ -60,7 +60,7 @@ pub trait ShareReader: Send + Sync {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, CatalogError>;
+    ) -> Result<Page<Table>, ShareReaderError>;
 
     /// Return a page of tables stored on the sharing server store that belong
     /// to the specified share+schema and are accessible for the given client.
@@ -73,7 +73,7 @@ pub trait ShareReader: Send + Sync {
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, CatalogError>;
+    ) -> Result<Page<Table>, ShareReaderError>;
 
     /// Return a share with the specified name if it is accessible for the
     /// given client.
@@ -81,7 +81,7 @@ pub trait ShareReader: Send + Sync {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<Share, CatalogError>;
+    ) -> Result<Share, ShareReaderError>;
 
     /// Return a table with the specified name within the specified share and
     /// schema if it is accessible for the given client.
@@ -91,7 +91,7 @@ pub trait ShareReader: Send + Sync {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, CatalogError>;
+    ) -> Result<Table, ShareReaderError>;
 }
 
 /// Pagination parameters for listing shared objects.
@@ -108,7 +108,7 @@ impl Pagination {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing::catalog::Pagination;
+    /// use delta_sharing_server::share_reader::Pagination;
     ///
     /// let pagination = Pagination::new(Some(43), Some("foo".to_string()));
     /// assert_eq!(pagination.max_results(), Some(43));
@@ -125,7 +125,7 @@ impl Pagination {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing::catalog::Pagination;
+    /// use delta_sharing_server::share_reader::Pagination;
     ///
     /// let pagination = Pagination::new(Some(43), None);
     /// assert_eq!(pagination.max_results(), Some(43));
@@ -139,7 +139,7 @@ impl Pagination {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing::catalog::Pagination;
+    /// use delta_sharing_server::share_reader::Pagination;
     ///
     /// let pagination = Pagination::new(None, Some("foo".to_string()));
     /// assert_eq!(pagination.page_token(), Some("foo"));
@@ -149,15 +149,28 @@ impl Pagination {
     }
 }
 
-/// A page of shared objects.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A page of shared objects returned from the [`ShareReader`].
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Page<T> {
-    pub(crate) items: Vec<T>,
-    pub(crate) next_page_token: Option<String>,
+    items: Vec<T>,
+    next_page_token: Option<String>,
 }
 
 impl<T> Page<T> {
-    /// Create a new page with the specified items and next page token.
+    /// Create a new page with the specified items and token.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let shares = vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ];
+    /// let page = Page::new(shares, Some("token".to_string()));
+    /// assert_eq!(page.len(), 2);
+    /// assert_eq!(page.next_page_token(), Some("token"));
+    /// ````
     pub fn new(items: Vec<T>, next_page_token: Option<String>) -> Self {
         Self {
             items,
@@ -165,37 +178,114 @@ impl<T> Page<T> {
         }
     }
 
-    /// Return the items in the page.
+    /// Return the shared objects in the page.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let shares = vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ];
+    /// let page = Page::new(shares.clone(), None);
+    /// assert_eq!(page.items(), &shares);
+    /// ````
     pub fn items(&self) -> &Vec<T> {
         &self.items
     }
 
-    /// Return the token that can be used to resume listing from a specific point
+    /// Return the token that can be used to resume listing from a specified
+    /// point in the collection of shared objects.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let shares = vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ];
+    /// let page = Page::new(shares, Some("token".to_string()));
+    /// assert_eq!(page.next_page_token(), Some("token"));
+    /// ```
     pub fn next_page_token(&self) -> Option<&str> {
         self.next_page_token.as_deref()
     }
 
-    /// Return the amount of items in the page.
+    /// Return the amount of shared objects in the page.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let shares = vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ];
+    /// let page = Page::new(shares, None);
+    /// assert_eq!(page.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
     /// Return whether the page is empty.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let page = Page::<Share>::new(vec![], None);
+    /// assert!(page.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 
-    /// Convert the page into its parts: items and next page token.
+    /// Return whether the page is the last page of the collection.
+    ///
+    /// If the next page token is `None`, then the page is the last page.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let page = Page::new(vec![Share::new("foo".to_string(), None)], None);
+    /// assert!(page.is_last_page());
+    /// ```
+    pub fn is_last_page(&self) -> bool {
+        self.next_page_token.is_none()
+    }
+
+    /// Convert the page into its parts: items and token.
+    ///
+    /// # Example
+    /// ```rust
+    /// use delta_sharing_server::share_reader::{Page, Share};
+    ///
+    /// let shares = vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ];
+    /// let page = Page::new(shares, Some("token".to_string()));
+    /// let (items, token) = page.into_parts();
+    /// assert_eq!(items, vec![
+    ///     Share::new("foo".to_string(), None),
+    ///     Share::new("bar".to_string(), None)
+    /// ]);
+    /// assert_eq!(token, Some("token".to_string()));
+    /// ```
     pub fn into_parts(self) -> (Vec<T>, Option<String>) {
         (self.items, self.next_page_token)
     }
 }
 
 /// Information about a share stored on the sharing server store.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Share {
-    name: String,
     id: Option<String>,
+    name: String,
 }
 
 impl Share {
@@ -204,23 +294,23 @@ impl Share {
         Self { name, id }
     }
 
-    /// Return the name of the share.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     /// Return the id of the share.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+
+    /// Return the name of the share.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// Information about a schema stored on the sharing server store.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Schema {
-    pub(crate) id: Option<String>,
-    pub(crate) name: String,
-    pub(crate) share_name: String,
+    id: Option<String>,
+    name: String,
+    share_name: String,
 }
 
 impl Schema {
@@ -259,14 +349,14 @@ impl Schema {
 }
 
 /// Information about a table stored on the sharing server store.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Table {
-    pub(crate) name: String,
-    pub(crate) schema_name: String,
-    pub(crate) share_name: String,
-    pub(crate) storage_location: String,
-    pub(crate) id: Option<String>,
-    pub(crate) share_id: Option<String>,
+    id: Option<String>,
+    name: String,
+    share_id: Option<String>,
+    share_name: String,
+    schema_name: String,
+    storage_location: String,
 }
 
 impl Table {
@@ -319,113 +409,76 @@ impl Table {
 }
 
 /// Errors that can occur during the listing and retrieval of shared objects.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum CatalogError {
-    /// The requested share was not found in the backing store.
-    ShareNotFound {
-        /// The name of the share that could not be found.
-        share_name: String,
-    },
-    /// The requested schema was not found in the backing store.
-    SchemaNotFound {
-        /// The name of the share where the schema was searched.
-        share_name: String,
-        /// The name of the schema that could not be found.
-        schema_name: String,
-    },
-    /// The requested table was not found in the backing store.
-    TableNotFound {
-        /// The name of the share where the table was searched.
-        share_name: String,
-        /// The name of the schema where the table was searched.
-        schema_name: String,
-        /// The name of the table that could not be found.
-        table_name: String,
-    },
-    /// The token in the list cursor could not be serialized.
-    MalformedContinuationToken,
-    /// The connection to the backing store could not be established.
-    ConnectionError,
-    /// Other error
-    Other {
-        /// Reason why this error occurred.
-        reason: String,
-    },
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
+pub enum ShareReaderErrorKind {
+    /// The requested share or table was not found.
+    ResourceNotFound,
+    /// The pagination token is malformed.
+    MalformedPagination,
+    /// The [`ShareReader`] has an internal error.
+    Internal,
 }
 
-impl CatalogError {
-    /// Create a new error indicating that the requested share was not found.
-    pub fn share_not_found(share_name: impl Into<String>) -> Self {
-        Self::ShareNotFound {
-            share_name: share_name.into(),
+/// Error that occurred during the listing and retrieval of shared objects.
+///
+/// This error is used to wrap the specific error that occurred and to provide
+/// a message that can be used to describe the error.
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ShareReaderError {
+    kind: ShareReaderErrorKind,
+    message: String,
+}
+
+impl ShareReaderError {
+    /// Create a new error with the specified kind and message.
+    pub fn new(kind: ShareReaderErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
         }
     }
 
-    /// Create a new error indicating that the requested schema was not found.
-    pub fn schema_not_found(share_name: impl Into<String>, schema_name: impl Into<String>) -> Self {
-        Self::SchemaNotFound {
-            share_name: share_name.into(),
-            schema_name: schema_name.into(),
-        }
+    /// Return the kind of the error.
+    pub fn kind(&self) -> ShareReaderErrorKind {
+        self.kind
     }
 
-    /// Create a new error indicating that the requested table was not found.
-    pub fn table_not_found(
-        share_name: impl Into<String>,
-        schema_name: impl Into<String>,
-        table_name: impl Into<String>,
-    ) -> Self {
-        Self::TableNotFound {
-            share_name: share_name.into(),
-            schema_name: schema_name.into(),
-            table_name: table_name.into(),
-        }
+    /// Return the message of the error.
+    pub fn message(&self) -> &str {
+        &self.message
     }
 
-    /// Create a new error indicating that the list cursor token is malformed.
-    pub fn malformed_pagination(_msg: impl Into<String>) -> Self {
-        Self::MalformedContinuationToken
+    /// Create a new error indicating that the requested share or table was not
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(ShareReaderErrorKind::ResourceNotFound, message)
     }
 
-    /// Create a new error indicating that the specific implementation has an
-    /// internal error.
-    pub fn internal(msg: impl Into<String>) -> Self {
-        Self::Other { reason: msg.into() }
+    /// Create a new error indicating that the pagination token is malformed.
+    pub fn malformed_pagination(message: impl Into<String>) -> Self {
+        Self::new(ShareReaderErrorKind::MalformedPagination, message)
+    }
+
+    /// Create a new error indicating that the [`ShareReader`] has an internal
+    /// error.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(ShareReaderErrorKind::Internal, message)
     }
 }
 
-impl Display for CatalogError {
+impl Display for ShareReaderErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CatalogError::ShareNotFound { share_name } => {
-                write!(f, "share `{}` could not be found", share_name)
-            }
-            CatalogError::SchemaNotFound {
-                share_name,
-                schema_name,
-            } => write!(
-                f,
-                "schema `{}.{}` could not be found",
-                share_name, schema_name
-            ),
-            CatalogError::TableNotFound {
-                share_name,
-                schema_name,
-                table_name,
-            } => write!(
-                f,
-                "table `{}.{}.{}` could not be found",
-                share_name, schema_name, table_name
-            ),
-            CatalogError::MalformedContinuationToken => {
-                write!(f, "the provided `page_token` is malformed")
-            }
-            CatalogError::ConnectionError => {
-                write!(f, "could not connect with the share manager")
-            }
-            CatalogError::Other { .. } => write!(f, "another error occurred"),
+            ShareReaderErrorKind::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
+            ShareReaderErrorKind::MalformedPagination => write!(f, "MALFORMED_PAGINATION"),
+            ShareReaderErrorKind::Internal => write!(f, "INTERNAL_ERROR"),
         }
     }
 }
 
-impl Error for CatalogError {}
+impl Display for ShareReaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.kind, self.message)
+    }
+}
+
+impl Error for ShareReaderError {}

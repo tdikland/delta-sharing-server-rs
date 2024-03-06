@@ -13,7 +13,7 @@ use self::model::{
     ShareModel, TableInfoModel, TableModel,
 };
 
-use super::{CatalogError, Page, Pagination, Schema, Share, ShareReader, Table};
+use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
 
 mod model;
 
@@ -836,9 +836,9 @@ impl ShareReader for PostgresCatalog {
         &self,
         client_id: &ClientId,
         cursor: &Pagination,
-    ) -> Result<Page<Share>, CatalogError> {
+    ) -> Result<Page<Share>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
         let shares_info_models = self.select_shares(client_id, &pg_cursor).await?;
 
         let shares = shares_info_models
@@ -857,9 +857,9 @@ impl ShareReader for PostgresCatalog {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Schema>, CatalogError> {
+    ) -> Result<Page<Schema>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
         let schemas_models = self
             .select_schemas(client_id, share_name, &pg_cursor)
             .await?;
@@ -881,9 +881,9 @@ impl ShareReader for PostgresCatalog {
         client_id: &ClientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
+    ) -> Result<Page<Table>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
         let table_models = self
             .select_tables_by_share(client_id, share_name, &pg_cursor)
             .await?;
@@ -912,9 +912,9 @@ impl ShareReader for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
+    ) -> Result<Page<Table>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|_| CatalogError::MalformedContinuationToken)?;
+            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
         let table_models = self
             .select_tables_by_schema(client_id, share_name, schema_name, &pg_cursor)
             .await?;
@@ -941,13 +941,14 @@ impl ShareReader for PostgresCatalog {
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<Share, CatalogError> {
+    ) -> Result<Share, ShareReaderError> {
         self.select_share_by_name(client_id, share_name)
             .await?
             .map(|s| Share::new(s.name, Some(s.id.to_string())))
-            .ok_or(CatalogError::ShareNotFound {
-                share_name: share_name.to_string(),
-            })
+            .ok_or(ShareReaderError::not_found(format!(
+                "share `{}` does not exist or is not accessible",
+                share_name
+            )))
     }
 
     async fn get_table(
@@ -956,7 +957,7 @@ impl ShareReader for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, CatalogError> {
+    ) -> Result<Table, ShareReaderError> {
         self.select_table_by_name(client_id, share_name, schema_name, table_name)
             .await?
             .map(|t| Table {
@@ -967,19 +968,15 @@ impl ShareReader for PostgresCatalog {
                 share_name: t.share_name,
                 storage_location: t.storage_path,
             })
-            .ok_or(CatalogError::TableNotFound {
-                share_name: share_name.to_string(),
-                schema_name: schema_name.to_string(),
-                table_name: table_name.to_string(),
-            })
+            .ok_or(ShareReaderError::not_found(format!(
+                "table `{}.{}.{}` does not exist or is not accessible",
+                share_name, schema_name, table_name
+            )))
     }
 }
 
-// TODO: Sort out Error handling and conversion
-impl From<sqlx::Error> for CatalogError {
+impl From<sqlx::Error> for ShareReaderError {
     fn from(err: sqlx::Error) -> Self {
-        CatalogError::Other {
-            reason: err.to_string(),
-        }
+        ShareReaderError::internal(err.to_string())
     }
 }
