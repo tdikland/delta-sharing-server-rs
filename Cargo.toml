@@ -45,7 +45,10 @@ tokio-util = { version = "0.7.8", features = ["full"] }
 futures = "0.3.28"
 tower = "0.4.13"
 testcontainers = "0.15.0"
-testcontainers-modules = { version = "0.3.4", features = ["dynamodb", "postgres"] }
+testcontainers-modules = { version = "0.3.4", features = [
+    "dynamodb",
+    "postgres",
+] }
 
 [dev-dependencies]
 tracing-subscriber = "0.3.17"
@@ -56,6 +59,8 @@ axum-macros = "0.3.7"
 insta = { version = "1.29.0", features = ["json"] }
 tower = "0.4.13"
 tempfile = "3.6.0"
+aws-smithy-runtime = { version = "1", features = ["test-util"] }
+http = "1"
 
 [[example]]
 name = "dynamo-delta-axum"

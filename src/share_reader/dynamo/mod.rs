@@ -1,20 +1,31 @@
 //! DynamoDB based implementation of the Catalog trait
 
+use std::collections::HashMap;
+
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
-use super::{CatalogError, Page, Pagination, Schema, Share, ShareReader, Table};
+use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
 use crate::auth::ClientId;
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
-    types::{Delete, Put, TransactWriteItem},
+    error::SdkError,
+    operation::{
+        delete_item::DeleteItemError,
+        get_item::{GetItemError, GetItemOutput},
+        put_item::{PutItemError, PutItemOutput},
+        query::{QueryError, QueryOutput},
+        transact_write_items::TransactWriteItemsError,
+    },
+    types::{AttributeValue, Delete, Put, TransactWriteItem},
     Client,
 };
 
 mod condition;
 mod config;
-mod convert;
+mod model;
 mod pagination;
 
+use aws_sdk_s3::config::IntoShared;
 pub use config::DynamoCatalogConfig;
 
 /// Catalog implementation backed by AWS DynamoDB
@@ -45,377 +56,323 @@ impl DynamoCatalog {
     }
 
     /// Write a new share to the catalog
-    pub async fn _put_share(&self, client_id: ClientId, share: Share) -> Result<(), CatalogError> {
-        let share_item = convert::to_share_item(client_id, share, &self.config);
+    pub async fn put_share_item(
+        &self,
+        client_name: &str,
+        share_name: &str,
+    ) -> Result<(), SdkError<PutItemError>> {
+        let share_item = model::build_share_item(client_name, share_name, &self.config);
         self.client
             .put_item()
             .table_name(self.config.table_name())
             .set_item(Some(share_item))
             .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!("write share to catalog failed; reason: `{:?}`", e))
-            })?;
+            .await?;
 
         Ok(())
     }
 
     /// Read a share from the catalog
-    pub async fn _get_share(
+    pub async fn get_share_item(
         &self,
-        client_id: &ClientId,
+        client_name: &str,
         share_name: &str,
-    ) -> Result<Share, CatalogError> {
-        let key = convert::to_share_key(client_id, share_name, &self.config);
+    ) -> Result<Option<HashMap<String, AttributeValue>>, SdkError<GetItemError>> {
+        let key = model::build_share_key(client_name, share_name, &self.config);
         let res = self
             .client
             .get_item()
             .table_name(self.config.table_name())
             .set_key(Some(key))
             .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!("read share from catalog failed; reason: `{:?}`", e))
-            })?;
+            .await?;
 
-        if let Some(item) = res.item() {
-            let share_info = convert::to_share_info(item, &self.config)?;
-            Ok(share_info)
-        } else {
-            Err(CatalogError::share_not_found(share_name))
-        }
+        Ok(res.item)
     }
 
     /// List all shares in the catalog
-    pub async fn _query_shares(
+    pub async fn query_share_items(
         &self,
-        client_id: &ClientId,
+        client_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, CatalogError> {
+    ) -> Result<Vec<HashMap<String, AttributeValue>>, SdkError<QueryError>> {
         let res = self
             .client
             .query()
             .table_name(self.config.table_name())
-            .shares_for_client_cond(client_id, &self.config)
+            .shares_for_client_cond(client_name, &self.config)
             .with_pagination(pagination)
             .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!(
-                    "list shares from catalog failed; reason: `{:?}`",
-                    e
-                ))
-            })?;
+            .await?;
 
-        convert::to_share_info_page(res.items(), res.last_evaluated_key(), &self.config)
+        Ok(res.items.unwrap_or_default())
     }
 
-    /// Delete a share from the catalog
-    pub async fn _delete_share(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-    ) -> Result<(), CatalogError> {
-        let key = convert::to_share_key(client_id, share_name, &self.config);
-        self.client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .condition_check(condition::empty_share_check(
-                        client_id,
-                        share_name,
-                        &self.config,
-                    ))
-                    .build(),
-            )
-            .transact_items(
-                TransactWriteItem::builder()
-                    .delete(
-                        Delete::builder()
-                            .table_name(self.config.table_name())
-                            .set_key(Some(key))
-                            .build()
-                            .unwrap(),
-                    )
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!(
-                    "delete share from catalog failed; reason: `{:?}`",
-                    e
-                ))
-            })?;
+    // /// Delete a share from the catalog
+    // pub async fn _delete_share(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    // ) -> Result<(), SdkError<TransactWriteItemsError>> {
+    //     let key = convert::to_share_key(client_id, share_name, &self.config);
+    //     self.client
+    //         .transact_write_items()
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .condition_check(condition::empty_share_check(
+    //                     client_id,
+    //                     share_name,
+    //                     &self.config,
+    //                 ))
+    //                 .build(),
+    //         )
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .delete(
+    //                     Delete::builder()
+    //                         .table_name(self.config.table_name())
+    //                         .set_key(Some(key))
+    //                         .build()
+    //                         .unwrap(),
+    //                 )
+    //                 .build(),
+    //         )
+    //         .send()
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Write a new schema to the catalog
-    pub async fn _put_schema(
-        &self,
-        client_id: ClientId,
-        schema: Schema,
-    ) -> Result<(), CatalogError> {
-        let item = convert::to_schema_item(client_id.clone(), schema.clone(), &self.config);
-        self.client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .condition_check(condition::share_exists_check(
-                        &client_id,
-                        schema.share_name(),
-                        &self.config,
-                    ))
-                    .build(),
-            )
-            .transact_items(
-                TransactWriteItem::builder()
-                    .put(
-                        Put::builder()
-                            .table_name(self.config.table_name())
-                            .set_item(Some(item))
-                            .build()
-                            .unwrap(),
-                    )
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| {
-                // TODO: check if the error is a conditional check failed
-                CatalogError::internal(format!("write schema to catalog failed; reason: `{:?}`", e))
-            })?;
+    // /// Write a new schema to the catalog
+    // pub async fn _put_schema(
+    //     &self,
+    //     client_id: ClientId,
+    //     schema: Schema,
+    // ) -> Result<(), SdkError<TransactWriteItemsError>> {
+    //     let item = convert::to_schema_item(client_id.clone(), schema.clone(), &self.config);
+    //     self.client
+    //         .transact_write_items()
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .condition_check(condition::share_exists_check(
+    //                     &client_id,
+    //                     schema.share_name(),
+    //                     &self.config,
+    //                 ))
+    //                 .build(),
+    //         )
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .put(
+    //                     Put::builder()
+    //                         .table_name(self.config.table_name())
+    //                         .set_item(Some(item))
+    //                         .build()
+    //                         .unwrap(),
+    //                 )
+    //                 .build(),
+    //         )
+    //         .send()
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Read a schema from the catalog
-    pub async fn _get_schema(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        schema_name: &str,
-    ) -> Result<Schema, CatalogError> {
-        let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
-        let res = self
-            .client
-            .get_item()
-            .table_name(self.config.table_name())
-            .set_key(Some(key))
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!(
-                    "read schema from catalog failed; reason: `{:?}`",
-                    e
-                ))
-            })?;
+    // /// Read a schema from the catalog
+    // pub async fn _get_schema(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     schema_name: &str,
+    // ) -> Result<Option<Schema>, SdkError<GetItemError>> {
+    //     let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
+    //     let res = self
+    //         .client
+    //         .get_item()
+    //         .table_name(self.config.table_name())
+    //         .set_key(Some(key))
+    //         .send()
+    //         .await?;
 
-        if let Some(item) = res.item() {
-            let schema_info = convert::to_schema_info(item, &self.config)?;
-            Ok(schema_info)
-        } else {
-            Err(CatalogError::schema_not_found(share_name, schema_name))
-        }
-    }
+    //     if let Some(item) = res.item() {
+    //         let schema_info = convert::to_schema_info(item, &self.config)?;
+    //         Ok(schema_info)
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 
-    /// List all schemas in a share
-    pub async fn _query_schemas(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        pagination: &Pagination,
-    ) -> Result<Page<Schema>, CatalogError> {
-        let res = self
-            .client
-            .query()
-            .table_name(self.config.table_name())
-            .schemas_for_client_share_cond(client_id, share_name, &self.config)
-            .with_pagination(pagination)
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!(
-                    "list schemas from catalog failed; reason: `{:?}`",
-                    e
-                ))
-            })?;
+    // /// List all schemas in a share
+    // pub async fn _query_schemas(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     pagination: &Pagination,
+    // ) -> Result<Page<Schema>, SdkError<QueryError>> {
+    //     let res = self
+    //         .client
+    //         .query()
+    //         .table_name(self.config.table_name())
+    //         .schemas_for_client_share_cond(client_id, share_name, &self.config)
+    //         .with_pagination(pagination)
+    //         .send()
+    //         .await?;
 
-        convert::to_schema_info_page(res.items(), res.last_evaluated_key(), &self.config)
-    }
+    //     convert::to_schema_info_page(res.items(), res.last_evaluated_key(), &self.config)
+    // }
 
-    /// Delete a schema from the catalog
-    pub async fn _delete_schema(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        schema_name: &str,
-    ) -> Result<(), CatalogError> {
-        let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
-        let r = self
-            .client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .condition_check(condition::empty_schema_check(
-                        client_id,
-                        share_name,
-                        schema_name,
-                        &self.config,
-                    ))
-                    .build(),
-            )
-            .transact_items(
-                TransactWriteItem::builder()
-                    .delete(
-                        Delete::builder()
-                            .table_name(self.config.table_name())
-                            .set_key(Some(key))
-                            .build()
-                            .unwrap(),
-                    )
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!(
-                    "delete share from catalog failed; reason: `{:?}`",
-                    e
-                ))
-            })?;
+    // /// Delete a schema from the catalog
+    // pub async fn _delete_schema(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     schema_name: &str,
+    // ) -> Result<(), SdkError<TransactWriteItemsError>> {
+    //     let key = convert::to_schema_key(client_id, share_name, schema_name, &self.config);
+    //     let r = self
+    //         .client
+    //         .transact_write_items()
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .condition_check(condition::empty_schema_check(
+    //                     client_id,
+    //                     share_name,
+    //                     schema_name,
+    //                     &self.config,
+    //                 ))
+    //                 .build(),
+    //         )
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .delete(
+    //                     Delete::builder()
+    //                         .table_name(self.config.table_name())
+    //                         .set_key(Some(key))
+    //                         .build()
+    //                         .unwrap(),
+    //                 )
+    //                 .build(),
+    //         )
+    //         .send()
+    //         .await?;
 
-        println!("{:?}", r);
+    //     println!("{:?}", r);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Write a new table to the catalog
-    pub async fn _put_table(&self, client_id: ClientId, table: Table) -> Result<(), CatalogError> {
-        let item = convert::to_table_item(client_id.clone(), table.clone(), &self.config);
-        self.client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .condition_check(condition::schema_exists_check(
-                        &client_id,
-                        table.share_name(),
-                        table.schema_name(),
-                        &self.config,
-                    ))
-                    .build(),
-            )
-            .transact_items(
-                TransactWriteItem::builder()
-                    .put(
-                        Put::builder()
-                            .table_name(self.config.table_name())
-                            .set_item(Some(item))
-                            .build()
-                            .unwrap(),
-                    )
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| {
-                // TODO: check if the error is a conditional check failed
-                CatalogError::internal(format!("write table to catalog failed; reason: `{:?}`", e))
-            })?;
+    // /// Write a new table to the catalog
+    // pub async fn _put_table(
+    //     &self,
+    //     client_id: ClientId,
+    //     table: Table,
+    // ) -> Result<(), SdkError<TransactWriteItemsError>> {
+    //     let item = convert::to_table_item(client_id.clone(), table.clone(), &self.config);
+    //     self.client
+    //         .transact_write_items()
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .condition_check(condition::schema_exists_check(
+    //                     &client_id,
+    //                     table.share_name(),
+    //                     table.schema_name(),
+    //                     &self.config,
+    //                 ))
+    //                 .build(),
+    //         )
+    //         .transact_items(
+    //             TransactWriteItem::builder()
+    //                 .put(
+    //                     Put::builder()
+    //                         .table_name(self.config.table_name())
+    //                         .set_item(Some(item))
+    //                         .build()
+    //                         .unwrap(),
+    //                 )
+    //                 .build(),
+    //         )
+    //         .send()
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Read a table from the catalog
-    pub async fn _get_table(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<Table, CatalogError> {
-        let key =
-            convert::to_table_key(client_id, share_name, schema_name, table_name, &self.config);
-        let res = self
-            .client
-            .get_item()
-            .table_name(self.config.table_name())
-            .set_key(Some(key))
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!("read table to catalog failed; reason: `{:?}`", e))
-            })?;
+    // /// Read a table from the catalog
+    // pub async fn _get_table(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     schema_name: &str,
+    //     table_name: &str,
+    // ) -> Result<Option<Table>, SdkError<GetItemError>> {
+    //     let key =
+    //         convert::to_table_key(client_id, share_name, schema_name, table_name, &self.config);
+    //     let res = self
+    //         .client
+    //         .get_item()
+    //         .table_name(self.config.table_name())
+    //         .set_key(Some(key))
+    //         .send()
+    //         .await?;
 
-        if let Some(item) = res.item() {
-            let table_info = convert::to_table_info(item, &self.config)?;
-            Ok(table_info)
-        } else {
-            Err(CatalogError::table_not_found(
-                share_name,
-                schema_name,
-                table_name,
-            ))
-        }
-    }
+    //     if let Some(item) = res.item() {
+    //         let table_info = convert::to_table_info(item, &self.config)?;
+    //         Ok(table_info)
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 
-    /// List all tables in a share
-    pub async fn _query_tables_in_share(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        pagination: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
-        let res = self
-            .client
-            .query()
-            .table_name(self.config.table_name())
-            .tables_for_client_share_cond(client_id, share_name, &self.config)
-            .with_pagination(pagination)
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!("list tables in catalog failed; reason: `{:?}`", e))
-            })?;
+    // /// List all tables in a share
+    // pub async fn _query_tables_in_share(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     pagination: &Pagination,
+    // ) -> Result<Page<Table>, SdkError<QueryError>> {
+    //     let res = self
+    //         .client
+    //         .query()
+    //         .table_name(self.config.table_name())
+    //         .tables_for_client_share_cond(client_id, share_name, &self.config)
+    //         .with_pagination(pagination)
+    //         .send()
+    //         .await?;
 
-        convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
-    }
+    //     convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
+    // }
 
-    /// List all tables in a schema
-    pub async fn _query_tables_in_schema(
-        &self,
-        client_id: &ClientId,
-        share_name: &str,
-        schema_name: &str,
-        pagination: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
-        let res = self
-            .client
-            .query()
-            .table_name(self.config.table_name())
-            .tables_for_client_schema_cond(client_id, share_name, schema_name, &self.config)
-            .with_pagination(pagination)
-            .send()
-            .await
-            .map_err(|e| {
-                CatalogError::internal(format!("list tables in catalog failed; reason: `{:?}`", e))
-            })?;
+    // /// List all tables in a schema
+    // pub async fn _query_tables_in_schema(
+    //     &self,
+    //     client_id: &ClientId,
+    //     share_name: &str,
+    //     schema_name: &str,
+    //     pagination: &Pagination,
+    // ) -> Result<Page<Table>, SdkError<QueryError>> {
+    //     let res = self
+    //         .client
+    //         .query()
+    //         .table_name(self.config.table_name())
+    //         .tables_for_client_schema_cond(client_id, share_name, schema_name, &self.config)
+    //         .with_pagination(pagination)
+    //         .send()
+    //         .await?;
 
-        convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
-    }
+    //     convert::to_table_info_page(res.items(), res.last_evaluated_key(), &self.config)
+    // }
 
-    /// Delete a table from the catalog
-    pub async fn _delete_table(
-        &self,
-        _client_id: &ClientId,
-        _share_name: &str,
-        _schema_name: &str,
-        _table_name: &str,
-    ) -> Result<(), CatalogError> {
-        // Can this be done?
-        todo!()
-    }
+    // /// Delete a table from the catalog
+    // pub async fn _delete_table(
+    //     &self,
+    //     _client_id: &ClientId,
+    //     _share_name: &str,
+    //     _schema_name: &str,
+    //     _table_name: &str,
+    // ) -> Result<(), SdkError<DeleteItemError>> {
+    //     // Can this be done?
+    //     todo!()
+    // }
 }
 
 #[async_trait]
@@ -424,8 +381,11 @@ impl ShareReader for DynamoCatalog {
         &self,
         client_id: &ClientId,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, CatalogError> {
-        self._query_shares(client_id, pagination).await
+    ) -> Result<Page<Share>, ShareReaderError> {
+        // self._query_shares(client_id, pagination)
+        //     .await
+        //     .map_err(Into::into)
+        todo!()
     }
 
     async fn list_schemas(
@@ -433,8 +393,11 @@ impl ShareReader for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Schema>, CatalogError> {
-        self._query_schemas(client_id, share_name, pagination).await
+    ) -> Result<Page<Schema>, ShareReaderError> {
+        // self._query_schemas(client_id, share_name, pagination)
+        //     .await
+        //     .map_err(Into::into)
+        todo!()
     }
 
     async fn list_tables_in_share(
@@ -442,9 +405,11 @@ impl ShareReader for DynamoCatalog {
         client_id: &ClientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
-        self._query_tables_in_share(client_id, share_name, pagination)
-            .await
+    ) -> Result<Page<Table>, ShareReaderError> {
+        // self._query_tables_in_share(client_id, share_name, pagination)
+        //     .await
+        //     .map_err(Into::into)
+        todo!()
     }
 
     async fn list_tables_in_schema(
@@ -453,17 +418,22 @@ impl ShareReader for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, CatalogError> {
-        self._query_tables_in_schema(client_id, share_name, schema_name, pagination)
-            .await
+    ) -> Result<Page<Table>, ShareReaderError> {
+        // self._query_tables_in_schema(client_id, share_name, schema_name, pagination)
+        //     .await
+        //     .map_err(Into::into)
+        todo!()
     }
 
     async fn get_share(
         &self,
         client_id: &ClientId,
         share_name: &str,
-    ) -> Result<Share, CatalogError> {
-        self._get_share(client_id, share_name).await
+    ) -> Result<Share, ShareReaderError> {
+        self._get_share(client_id, share_name)
+            .await
+            .map_err(Into::into)
+            .and_then(|res| res.ok_or_else(|| ShareReaderError::not_found("share not found")))
     }
 
     async fn get_table(
@@ -472,15 +442,61 @@ impl ShareReader for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, CatalogError> {
-        self._get_table(client_id, share_name, schema_name, table_name)
-            .await
+    ) -> Result<Table, ShareReaderError> {
+        // self._get_table(client_id, share_name, schema_name, table_name)
+        //     .await
+        //     .map_err(Into::into)
+        //     .and_then(|res| res.ok_or_else(|| ShareReaderError::not_found("table not found")))
+        todo!()
+    }
+}
+
+impl<E> From<SdkError<E>> for ShareReaderError {
+    fn from(value: SdkError<E>) -> Self {
+        ShareReaderError::internal(value.to_string())
     }
 }
 
 #[cfg(test)]
 mod test {
-    // use super::*;
+    use super::*;
+
+    use aws_config::Region;
+    use aws_sdk_dynamodb::{config::Credentials, Config};
+    use aws_sdk_s3::primitives::SdkBody;
+    use aws_smithy_runtime::client::http::test_util::{ReplayEvent, StaticReplayClient};
+
+    #[tokio::test]
+    async fn test_put_share() {
+        let http_client = StaticReplayClient::new(vec![ReplayEvent::new(
+            http::Request::builder()
+                .uri("https://dynamodb.eu-west-1.amazonaws.com/")
+                .body(SdkBody::from(r#"{"TableName":"test-table","Key":{"SK":{"S":"SHARE#share1"},"PK":{"S":"test-client"}}}"#))
+                .unwrap(),
+            http::Response::builder()
+                .status(404)
+                .body(SdkBody::from(
+                    r#"{"Items":[{"PK":{"S":"test-client"},"SK":{"S":"SHARE#share1"}},{"PK":{"S":"test-client"},"SK":{"S":"SHARE#share2"}}],"Count":2,"ScannedCount":2}"#,
+                ))
+                .unwrap(),
+        )]);
+
+        let conf = Config::builder()
+            .http_client(http_client.clone())
+            .region(Region::new("eu-west-1"))
+            .credentials_provider(Credentials::for_tests())
+            .behavior_version_latest()
+            .build();
+        let client = Client::from_conf(conf);
+
+        let catalog_config = DynamoCatalogConfig::new("test-table");
+        let catalog = DynamoCatalog::new(client, catalog_config);
+        let client_id = ClientId::known("test-client");
+
+        let res = catalog._put_share("foo", "bar").await;
+
+        http_client.assert_requests_match(&[]);
+    }
 
     // use aws_config::BehaviorVersion;
     // use aws_sdk_dynamodb::types::{

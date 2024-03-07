@@ -20,7 +20,7 @@ use std::{error::Error, fmt::Display};
 
 use crate::auth::ClientId;
 
-// pub mod dynamo;
+pub mod dynamo;
 // pub mod file;
 pub mod postgres;
 

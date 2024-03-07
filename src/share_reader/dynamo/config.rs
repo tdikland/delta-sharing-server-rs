@@ -100,7 +100,7 @@ impl DynamoCatalogConfig {
     }
 
     /// Get the name of the attribute that represents the securable.
-    pub fn securable(&self) -> &str {
+    pub fn securable_id(&self) -> &str {
         self.securable_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_SK)
