@@ -294,6 +294,10 @@ impl Share {
         Self { name, id }
     }
 
+    pub fn builder() -> ShareBuilder {
+        ShareBuilder::new()
+    }
+
     /// Return the id of the share.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
@@ -302,6 +306,54 @@ impl Share {
     /// Return the name of the share.
     pub fn name(&self) -> &str {
         &self.name
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct ShareBuilder {
+    id: Option<String>,
+    name: Option<String>,
+}
+
+impl ShareBuilder {
+    pub fn new() -> Self {
+        Self {
+            id: None,
+            name: None,
+        }
+    }
+
+    pub fn id(mut self, share_id: impl Into<String>) -> Self {
+        self.id = Some(share_id.into());
+        self
+    }
+
+    pub fn set_id(mut self, share_id: Option<String>) -> Self {
+        self.id = share_id;
+        self
+    }
+
+    pub fn name(mut self, share_name: impl Into<String>) -> Self {
+        self.name = Some(share_name.into());
+        self
+    }
+
+    pub fn set_name(mut self, share_name: Option<String>) -> Self {
+        self.name = share_name;
+        self
+    }
+
+    pub fn build(self) -> Result<Share, ShareReaderError> {
+        if self.name.is_none() {
+            return Err(ShareReaderError::internal(
+                "the `name` attribute of the share was not set",
+            ));
+        }
+
+        Ok(Share {
+            id: self.id,
+            name: self.name.unwrap(),
+        })
     }
 }
 
@@ -321,6 +373,10 @@ impl Schema {
             name,
             share_name,
         }
+    }
+
+    pub fn builder() -> SchemaBuilder {
+        SchemaBuilder::new()
     }
 
     /// Create a new schema info with the specified id, name and share name.
@@ -345,6 +401,88 @@ impl Schema {
     /// Return the name of the share where the schema is stored.
     pub fn share_name(&self) -> &str {
         &self.share_name
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SchemaBuilder {
+    schema_id: Option<String>,
+    share_id: Option<String>,
+    schema_name: Option<String>,
+    share_name: Option<String>,
+}
+
+impl SchemaBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn id(mut self, schema_id: impl Into<String>) -> Self {
+        self.schema_id = Some(schema_id.into());
+        self
+    }
+
+    pub fn set_id(mut self, schema_id: Option<String>) -> Self {
+        self.schema_id = schema_id;
+        self
+    }
+
+    pub fn share_id(mut self, share_id: impl Into<String>) -> Self {
+        self.share_id = Some(share_id.into());
+        self
+    }
+
+    pub fn set_share_id(mut self, share_id: Option<String>) -> Self {
+        self.share_id = share_id;
+        self
+    }
+
+    pub fn name(mut self, schema_name: impl Into<String>) -> Self {
+        self.schema_name = Some(schema_name.into());
+        self
+    }
+
+    pub fn set_name(mut self, schema_name: Option<String>) -> Self {
+        self.schema_name = schema_name;
+        self
+    }
+
+    pub fn share_name(mut self, share_name: impl Into<String>) -> Self {
+        self.share_name = Some(share_name.into());
+        self
+    }
+
+    pub fn set_share_name(mut self, share_name: Option<String>) -> Self {
+        self.share_name = share_name;
+        self
+    }
+
+    fn missing_fields(&self) -> Vec<String> {
+        let required = [
+            ("share_name", self.share_name.as_ref()),
+            ("schema_name", self.schema_name.as_ref()),
+        ];
+        required
+            .into_iter()
+            .filter(|(field_name, field_value)| field_value.is_none())
+            .map(|(key, value)| key.to_owned())
+            .collect::<Vec<_>>()
+    }
+
+    pub fn build(self) -> Result<Schema, ShareReaderError> {
+        let Some(schema_name) = self.schema_name else {
+            return Err(ShareReaderError::internal("bleh"));
+        };
+
+        let Some(share_name) = self.share_name else {
+            return Err(ShareReaderError::internal("bleh"));
+        };
+
+        Ok(Schema {
+            id: self.schema_id,
+            name: schema_name,
+            share_name,
+        })
     }
 }
 
@@ -377,6 +515,10 @@ impl Table {
         }
     }
 
+    pub fn builder() -> TableBuilder {
+        TableBuilder::new()
+    }
+
     /// Return the id of the table.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
@@ -405,6 +547,113 @@ impl Table {
     /// Return the storage location of the table.
     pub fn storage_path(&self) -> &str {
         &self.storage_location
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TableBuilder {
+    share_id: Option<String>,
+    schema_id: Option<String>,
+    table_id: Option<String>,
+    share_name: Option<String>,
+    schema_name: Option<String>,
+    table_name: Option<String>,
+    storage_path: Option<String>,
+}
+
+impl TableBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn share_id(mut self, share_id: impl Into<String>) -> Self {
+        self.share_id = Some(share_id.into());
+        self
+    }
+
+    pub fn set_share_id(mut self, share_id: Option<String>) -> Self {
+        self.share_id = share_id;
+        self
+    }
+
+    pub fn schema_id(mut self, schema_id: impl Into<String>) -> Self {
+        self.schema_id = Some(schema_id.into());
+        self
+    }
+
+    pub fn set_schema_id(mut self, schema_id: Option<String>) -> Self {
+        self.schema_id = schema_id;
+        self
+    }
+
+    pub fn id(mut self, table_id: impl Into<String>) -> Self {
+        self.table_id = Some(table_id.into());
+        self
+    }
+
+    pub fn set_id(mut self, table_id: Option<String>) -> Self {
+        self.table_id = table_id;
+        self
+    }
+
+    pub fn share_name(mut self, share_name: impl Into<String>) -> Self {
+        self.share_name = Some(share_name.into());
+        self
+    }
+
+    pub fn set_share_name(mut self, share_name: Option<String>) -> Self {
+        self.share_name = share_name;
+        self
+    }
+
+    pub fn schema_name(mut self, schema_name: impl Into<String>) -> Self {
+        self.schema_name = Some(schema_name.into());
+        self
+    }
+
+    pub fn set_schema_name(mut self, schema_name: Option<String>) -> Self {
+        self.schema_name = schema_name;
+        self
+    }
+
+    pub fn name(mut self, table_name: impl Into<String>) -> Self {
+        self.table_name = Some(table_name.into());
+        self
+    }
+
+    pub fn set_name(mut self, table_name: Option<String>) -> Self {
+        self.table_name = table_name;
+        self
+    }
+
+    pub fn storage_path(mut self, path: impl Into<String>) -> Self {
+        self.storage_path = Some(path.into());
+        self
+    }
+
+    pub fn set_storage_path(mut self, path: Option<String>) -> Self {
+        self.storage_path = path;
+        self
+    }
+
+    pub fn build(self) -> Result<Table, ShareReaderError> {
+        if self.share_name.is_none()
+            || self.schema_name.is_none()
+            || self.table_name.is_none()
+            || self.storage_path.is_none()
+        {
+            println!("{self:?}");
+            return Err(ShareReaderError::internal("invalid table"));
+        }
+
+        Ok(Table {
+            id: None,
+            name: self.table_name.unwrap(),
+            share_id: None,
+            share_name: self.share_name.unwrap(),
+            schema_name: self.schema_name.unwrap(),
+            storage_location: self.storage_path.unwrap(),
+        })
     }
 }
 

@@ -12,21 +12,21 @@ pub trait ConditionExt {
 
     fn schemas_for_client_share_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         config: &DynamoCatalogConfig,
     ) -> Self;
 
     fn tables_for_client_share_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         config: &DynamoCatalogConfig,
     ) -> Self;
 
     fn tables_for_client_schema_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         schema_name: &str,
         config: &DynamoCatalogConfig,
@@ -44,7 +44,7 @@ impl ConditionExt for QueryFluentBuilder {
 
     fn schemas_for_client_share_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         config: &DynamoCatalogConfig,
     ) -> Self {
@@ -60,7 +60,7 @@ impl ConditionExt for QueryFluentBuilder {
 
     fn tables_for_client_share_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         config: &DynamoCatalogConfig,
     ) -> Self {
@@ -73,7 +73,7 @@ impl ConditionExt for QueryFluentBuilder {
 
     fn tables_for_client_schema_cond(
         self,
-        client_id: &ClientId,
+        client_id: &str,
         share_name: &str,
         schema_name: &str,
         config: &DynamoCatalogConfig,
@@ -90,11 +90,11 @@ impl ConditionExt for QueryFluentBuilder {
 }
 
 pub fn share_exists_check(
-    client_id: &ClientId,
+    client_name: &str,
     share_name: &str,
     config: &DynamoCatalogConfig,
 ) -> ConditionCheck {
-    let key = model::to_share_key(client_id, share_name, config);
+    let key = model::build_share_key(client_name, share_name, config);
     ConditionCheck::builder()
         .table_name(config.table_name())
         .set_key(Some(key))
@@ -106,12 +106,12 @@ pub fn share_exists_check(
 }
 
 pub fn schema_exists_check(
-    client_id: &ClientId,
+    client_name: &str,
     share_name: &str,
     schema_name: &str,
     config: &DynamoCatalogConfig,
 ) -> ConditionCheck {
-    let key = model::to_schema_key(client_id, share_name, schema_name, config);
+    let key = model::build_schema_key(client_name, share_name, schema_name, config);
     ConditionCheck::builder()
         .table_name(config.table_name())
         .set_key(Some(key))
@@ -123,13 +123,16 @@ pub fn schema_exists_check(
 }
 
 pub fn empty_share_check(
-    client_id: &ClientId,
+    client_name: &str,
     share_name: &str,
     config: &DynamoCatalogConfig,
 ) -> ConditionCheck {
     ConditionCheck::builder()
         .table_name(config.table_name())
-        .key(config.client_id(), AttributeValue::S(client_id.to_string()))
+        .key(
+            config.client_id(),
+            AttributeValue::S(client_name.to_string()),
+        )
         .key(
             config.securable_id(),
             AttributeValue::S(format!("SCHEMA#{}.", share_name)),
@@ -142,14 +145,17 @@ pub fn empty_share_check(
 }
 
 pub fn empty_schema_check(
-    client_id: &ClientId,
+    client_name: &str,
     share_name: &str,
     schema_name: &str,
     config: &DynamoCatalogConfig,
 ) -> ConditionCheck {
     ConditionCheck::builder()
         .table_name(config.table_name())
-        .key(config.client_id(), AttributeValue::S(client_id.to_string()))
+        .key(
+            config.client_id(),
+            AttributeValue::S(client_name.to_string()),
+        )
         .key(
             config.securable_id(),
             AttributeValue::S(format!("TABLE#{}.{}.", share_name, schema_name)),

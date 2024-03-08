@@ -26,7 +26,7 @@ pub fn token_to_key(token: &str) -> HashMap<String, AttributeValue> {
 }
 
 /// Convert a DynamoDB key to a pagination token
-pub fn key_to_token(key: &HashMap<String, AttributeValue>) -> String {
+pub fn key_to_token(key: HashMap<String, AttributeValue>) -> String {
     let dynamo_key = DynamoKey {
         pk: key.get("PK").unwrap().as_s().unwrap().to_owned(),
         sk: key.get("SK").unwrap().as_s().unwrap().to_owned(),
