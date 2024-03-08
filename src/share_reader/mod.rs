@@ -294,6 +294,7 @@ impl Share {
         Self { name, id }
     }
 
+    /// Create a new [`ShareBuilder`]
     pub fn builder() -> ShareBuilder {
         ShareBuilder::new()
     }
@@ -309,6 +310,7 @@ impl Share {
     }
 }
 
+/// A builder for the [`Share`] type
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ShareBuilder {
     id: Option<String>,
