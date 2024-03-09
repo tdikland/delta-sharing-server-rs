@@ -21,7 +21,7 @@ use std::{error::Error, fmt::Display};
 use crate::auth::ClientId;
 
 pub mod dynamo;
-// pub mod file;
+pub mod file;
 pub mod postgres;
 
 /// Trait for listing and reading shared objects in the Delta Sharing server.

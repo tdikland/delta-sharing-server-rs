@@ -3,7 +3,10 @@
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
-use crate::{share_reader::CatalogError, reader::TableReaderError};
+use crate::{
+    reader::TableReaderError,
+    share_reader::{ShareReaderError, ShareReaderErrorKind},
+};
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
 
@@ -70,32 +73,18 @@ impl ServerError {
 
 pub type Result<T> = core::result::Result<T, ServerError>;
 
-impl From<CatalogError> for ServerError {
-    fn from(value: CatalogError) -> Self {
-        match value {
-            CatalogError::MalformedContinuationToken => ServerError::InvalidPaginationToken {
+impl From<ShareReaderError> for ServerError {
+    fn from(value: ShareReaderError) -> Self {
+        match value.kind() {
+            ShareReaderErrorKind::ResourceNotFound => ServerError::TableNotFound {
+                name: value.to_string(),
+            },
+            ShareReaderErrorKind::MalformedPagination => ServerError::InvalidPaginationParameters {
                 reason: value.to_string(),
             },
-            CatalogError::ShareNotFound { share_name } => {
-                ServerError::ShareNotFound { name: share_name }
-            }
-            CatalogError::SchemaNotFound {
-                share_name,
-                schema_name,
-            } => ServerError::TableNotFound {
-                name: format!("{}.{}", share_name, schema_name),
+            ShareReaderErrorKind::Internal => ServerError::ShareManagerError {
+                reason: value.to_string(),
             },
-            CatalogError::TableNotFound {
-                share_name,
-                schema_name,
-                table_name,
-            } => Self::TableNotFound {
-                name: format!("{}.{}.{}", share_name, schema_name, table_name),
-            },
-            CatalogError::ConnectionError => ServerError::ShareManagerError {
-                reason: String::new(),
-            },
-            CatalogError::Other { reason } => ServerError::ShareManagerError { reason },
         }
     }
 }

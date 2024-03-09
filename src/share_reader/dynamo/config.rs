@@ -1,9 +1,7 @@
 const DYNAMO_ATTRIBUTE_PK: &str = "PK";
 const DYNAMO_ATTRIBUTE_SK: &str = "SK";
-const DYNAMO_ATTRIBUTE_SHARE_ID: &str = "share_id";
 const DYNAMO_ATTRIBUTE_SHARE_NAME: &str = "share_name";
 const DYNAMO_ATTRIBUTE_SCHEMA_NAME: &str = "schema_name";
-const DYNAMO_ATTRIBUTE_TABLE_ID: &str = "table_id";
 const DYNAMO_ATTRIBUTE_TABLE_NAME: &str = "table_name";
 const DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION: &str = "table_storage_location";
 
@@ -93,45 +91,31 @@ impl DynamoCatalogConfig {
     }
 
     /// Get the name of the attribute that represents the client ID.
-    pub fn client_id(&self) -> &str {
+    pub fn client_id_attr(&self) -> &str {
         self.client_id_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_PK)
     }
 
     /// Get the name of the attribute that represents the securable.
-    pub fn securable_id(&self) -> &str {
+    pub fn securable_id_attr(&self) -> &str {
         self.securable_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_SK)
     }
 
-    /// Get the name of the attribute that represents the share ID.
-    pub fn share_id(&self) -> &str {
-        self.share_id_attr_name
-            .as_deref()
-            .unwrap_or(DYNAMO_ATTRIBUTE_SHARE_ID)
-    }
-
     /// Get the name of the attribute that represents the share name.
-    pub fn share_name(&self) -> &str {
+    pub fn share_name_attr(&self) -> &str {
         self.share_name_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_SHARE_NAME)
     }
 
     /// Get the name of the attribute that represents the schema name.
-    pub fn schema_name(&self) -> &str {
+    pub fn schema_name_attr(&self) -> &str {
         self.schema_name_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_SCHEMA_NAME)
-    }
-
-    /// Get the name of the attribute that represents the table ID.
-    pub fn table_id(&self) -> &str {
-        self.table_id_attr_name
-            .as_deref()
-            .unwrap_or(DYNAMO_ATTRIBUTE_TABLE_ID)
     }
 
     /// Get the name of the attribute that represents the table name.
@@ -142,7 +126,7 @@ impl DynamoCatalogConfig {
     }
 
     /// Get the name of the attribute that represents the table storage location.
-    pub fn table_storage_location(&self) -> &str {
+    pub fn storage_path_attr(&self) -> &str {
         self.table_stroage_location_attr_name
             .as_deref()
             .unwrap_or(DYNAMO_ATTRIBUTE_TABLE_STORAGE_LOCATION)

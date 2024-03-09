@@ -247,7 +247,7 @@ async fn get_share() {
         .unwrap_err();
     assert_eq!(
         share_not_found_error.to_string(),
-        "share `does-not-exist` could not be found"
+        "[RESOURCE_NOT_FOUND] share `does-not-exist` does not exist or is not accessible"
     );
 }
 
@@ -277,7 +277,7 @@ async fn get_table() {
         .unwrap_err();
     assert_eq!(
         table_not_found_error.to_string(),
-        "table `share1.schema1.does-not-exist` could not be found"
+        "[RESOURCE_NOT_FOUND] table `share1.schema1.does-not-exist` does not exist or is not accessible"
     );
 }
 

@@ -102,8 +102,8 @@ pub struct Schema {
 impl From<SchemaInfo> for Schema {
     fn from(value: SchemaInfo) -> Self {
         Self {
-            name: value.name,
-            share: value.share_name,
+            name: value.name().to_owned(),
+            share: value.share_name().to_owned(),
         }
     }
 }
@@ -153,11 +153,11 @@ pub struct Table {
 impl From<TableInfo> for Table {
     fn from(value: TableInfo) -> Self {
         Self {
-            name: value.name,
-            schema: value.schema_name,
-            share: value.share_name,
-            share_id: value.share_id,
-            id: value.id,
+            name: value.name().to_owned(),
+            schema: value.schema_name().to_owned(),
+            share: value.share_name().to_owned(),
+            share_id: value.share_id().map(ToOwned::to_owned),
+            id: value.id().to_owned().map(ToOwned::to_owned),
         }
     }
 }

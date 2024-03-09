@@ -12,11 +12,11 @@ pub fn build_share_key(
 ) -> HashMap<String, AttributeValue> {
     HashMap::from_iter([
         (
-            config.client_id().to_owned(),
+            config.client_id_attr().to_owned(),
             AttributeValue::S(client_name.to_owned()),
         ),
         (
-            config.securable_id().to_owned(),
+            config.securable_id_attr().to_owned(),
             AttributeValue::S(format!("SHARE#{share_name}")),
         ),
     ])
@@ -29,7 +29,7 @@ pub fn build_share_item(
 ) -> HashMap<String, AttributeValue> {
     let mut item = build_share_key(client_name, share_name, config);
     item.insert(
-        config.share_name().to_owned(),
+        config.share_name_attr().to_owned(),
         AttributeValue::S(share_name.to_owned()),
     );
 
@@ -41,7 +41,7 @@ pub fn item_to_share(
     config: &DynamoCatalogConfig,
 ) -> Result<Share, ShareReaderError> {
     Share::builder()
-        .set_name(extract_attr_from_item(item, config.share_name()))
+        .set_name(extract_attr_from_item(item, config.share_name_attr()))
         .build()
 }
 
@@ -53,11 +53,11 @@ pub fn build_schema_key(
 ) -> HashMap<String, AttributeValue> {
     HashMap::from_iter([
         (
-            config.client_id().to_owned(),
+            config.client_id_attr().to_owned(),
             AttributeValue::S(client_id.to_owned()),
         ),
         (
-            config.securable_id().to_owned(),
+            config.securable_id_attr().to_owned(),
             AttributeValue::S(format!("SCHEMA#{share_name}.{schema_name}")),
         ),
     ])
@@ -71,11 +71,11 @@ pub fn build_schema_item(
 ) -> HashMap<String, AttributeValue> {
     let mut item = build_schema_key(client_name, share_name, schema_name, config);
     item.insert(
-        config.share_name().to_owned(),
+        config.share_name_attr().to_owned(),
         AttributeValue::S(share_name.to_owned()),
     );
     item.insert(
-        config.schema_name().to_owned(),
+        config.schema_name_attr().to_owned(),
         AttributeValue::S(schema_name.to_owned()),
     );
 
@@ -87,8 +87,8 @@ pub fn item_to_schema(
     config: &DynamoCatalogConfig,
 ) -> Result<Schema, ShareReaderError> {
     Schema::builder()
-        .set_name(extract_attr_from_item(item, config.schema_name()))
-        .set_share_name(extract_attr_from_item(item, config.share_name()))
+        .set_name(extract_attr_from_item(item, config.schema_name_attr()))
+        .set_share_name(extract_attr_from_item(item, config.share_name_attr()))
         .build()
 }
 
@@ -101,11 +101,11 @@ pub fn build_table_key(
 ) -> HashMap<String, AttributeValue> {
     HashMap::from_iter([
         (
-            config.client_id().to_owned(),
+            config.client_id_attr().to_owned(),
             AttributeValue::S(client_name.to_owned()),
         ),
         (
-            config.securable_id().to_owned(),
+            config.securable_id_attr().to_owned(),
             AttributeValue::S(format!("TABLE#{share_name}.{schema_name}.{table_name}")),
         ),
     ])
@@ -121,11 +121,11 @@ pub fn build_table_item(
 ) -> HashMap<String, AttributeValue> {
     let mut item = build_table_key(client_name, share_name, schema_name, table_name, config);
     item.insert(
-        config.share_name().to_owned(),
+        config.share_name_attr().to_owned(),
         AttributeValue::S(share_name.to_owned()),
     );
     item.insert(
-        config.schema_name().to_owned(),
+        config.schema_name_attr().to_owned(),
         AttributeValue::S(schema_name.to_owned()),
     );
     item.insert(
@@ -133,7 +133,7 @@ pub fn build_table_item(
         AttributeValue::S(table_name.to_owned()),
     );
     item.insert(
-        config.table_storage_location().to_owned(),
+        config.storage_path_attr().to_owned(),
         AttributeValue::S(storage_path.to_owned()),
     );
 
@@ -145,13 +145,10 @@ pub fn item_to_table(
     config: &DynamoCatalogConfig,
 ) -> Result<Table, ShareReaderError> {
     Table::builder()
-        .set_share_name(extract_attr_from_item(item, config.share_name()))
-        .set_schema_name(extract_attr_from_item(item, config.schema_name()))
+        .set_share_name(extract_attr_from_item(item, config.share_name_attr()))
+        .set_schema_name(extract_attr_from_item(item, config.schema_name_attr()))
         .set_name(extract_attr_from_item(item, config.table_name_attr()))
-        .set_storage_path(extract_attr_from_item(
-            item,
-            config.table_storage_location(),
-        ))
+        .set_storage_path(extract_attr_from_item(item, config.storage_path_attr()))
         .build()
 }
 

@@ -1,0 +1,18 @@
+---
+source: src/state.rs
+assertion_line: 221
+expression: response
+---
+{
+  "items": [
+    {
+      "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "name": "vaccine_share"
+    },
+    {
+      "id": "3e979c79-6399-4dac-bcf8-54e268f48515",
+      "name": "sales_share"
+    }
+  ],
+  "next_page_token": "continuation_token"
+}

@@ -843,8 +843,8 @@ impl ShareReader for PostgresCatalog {
 
         let shares = shares_info_models
             .into_iter()
-            .map(|s| Share::new(s.name, Some(s.id.to_string())))
-            .collect::<Vec<_>>();
+            .map(|s| s.try_into_share())
+            .collect::<Result<Vec<_>, _>>()?;
         let next_page_token = shares
             .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
@@ -866,9 +866,8 @@ impl ShareReader for PostgresCatalog {
 
         let schemas = schemas_models
             .into_iter()
-            .map(|s| Schema::new_with_id(s.id.to_string(), s.name, share_name.to_string()))
-            .collect::<Vec<_>>();
-
+            .map(|s| s.try_into_schema())
+            .collect::<Result<Vec<_>, _>>()?;
         let next_page_token = schemas
             .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
@@ -890,15 +889,8 @@ impl ShareReader for PostgresCatalog {
 
         let tables = table_models
             .into_iter()
-            .map(|t| Table {
-                id: Some(t.id.to_string()),
-                share_id: Some(t.share_id.to_string()),
-                name: t.name,
-                schema_name: t.schema_name,
-                share_name: t.share_name,
-                storage_location: t.storage_path,
-            })
-            .collect::<Vec<_>>();
+            .map(|t| t.try_into_table())
+            .collect::<Result<Vec<_>, _>>()?;
         let next_page_token = tables
             .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
@@ -921,15 +913,8 @@ impl ShareReader for PostgresCatalog {
 
         let tables = table_models
             .into_iter()
-            .map(|t| Table {
-                id: Some(t.id.to_string()),
-                share_id: Some(t.share_id.to_string()),
-                name: t.name,
-                schema_name: t.schema_name,
-                share_name: t.share_name,
-                storage_location: t.storage_path,
-            })
-            .collect::<Vec<_>>();
+            .map(|t| t.try_into_table())
+            .collect::<Result<Vec<_>, _>>()?;
         let next_page_token = tables
             .get(pg_cursor.limit() as usize - 1)
             .and_then(|s| s.id().map(ToOwned::to_owned));
@@ -944,11 +929,11 @@ impl ShareReader for PostgresCatalog {
     ) -> Result<Share, ShareReaderError> {
         self.select_share_by_name(client_id, share_name)
             .await?
-            .map(|s| Share::new(s.name, Some(s.id.to_string())))
             .ok_or(ShareReaderError::not_found(format!(
                 "share `{}` does not exist or is not accessible",
                 share_name
             )))
+            .and_then(|s| s.try_into_share())
     }
 
     async fn get_table(
@@ -960,18 +945,11 @@ impl ShareReader for PostgresCatalog {
     ) -> Result<Table, ShareReaderError> {
         self.select_table_by_name(client_id, share_name, schema_name, table_name)
             .await?
-            .map(|t| Table {
-                id: Some(t.id.to_string()),
-                share_id: Some(t.share_id.to_string()),
-                name: t.name,
-                schema_name: t.schema_name,
-                share_name: t.share_name,
-                storage_location: t.storage_path,
-            })
             .ok_or(ShareReaderError::not_found(format!(
                 "table `{}.{}.{}` does not exist or is not accessible",
                 share_name, schema_name, table_name
             )))
+            .and_then(|t| t.try_into_table())
     }
 }
 
