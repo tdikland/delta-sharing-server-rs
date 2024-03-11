@@ -1,22 +1,24 @@
-// use axum::http::header::AUTHORIZATION;
-// use insta::assert_snapshot;
+use axum::http::header::AUTHORIZATION;
+use insta::assert_snapshot;
 
-// mod common;
-// use common::server::TestClient;
+mod common;
+use common::server::TestClient;
 
-// #[tokio::test]
-// async fn list_shares_success() {
-//     let test_client = TestClient::new().await;
-//     let response = test_client
-//         .get("/shares")
-//         .header(AUTHORIZATION, "Bearer foo_token")
-//         .send()
-//         .await;
+#[tokio::test]
+async fn list_shares_success() {
+    let test_client = TestClient::new().await;
+    let response = test_client
+        .get("/shares")
+        .header(AUTHORIZATION, "Bearer foo_token")
+        .send()
+        .await;
 
-//     response.assert_status_ok();
-//     response.assert_header_content_type_json();
-//     assert_snapshot!(response.text().await);
-// }
+    response.assert_status_ok();
+    response.assert_header_content_type_json();
+    assert_snapshot!(response.text().await);
+}
+
+
 
 // #[tokio::test]
 // async fn list_shares_pagination() {

@@ -19,10 +19,13 @@ use crate::protocol::action::{Metadata, Protocol};
 use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
 use crate::share_reader::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
 
-#[allow(clippy::declare_interior_mutable_const)]
-const DELTA_TABLE_VERSION: HeaderName = HeaderName::from_static("delta-table-version");
+// mod delta;
+// mod parquet;
+
+static DELTA_TABLE_VERSION: HeaderName = HeaderName::from_static("delta-table-version");
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Share {
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,6 +97,7 @@ impl IntoResponse for GetShareResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Schema {
     name: String,
     share: String,
@@ -205,7 +209,11 @@ impl From<TableVersionNumber> for TableVersionResponse {
 
 impl IntoResponse for TableVersionResponse {
     fn into_response(self) -> Response {
-        (StatusCode::OK, [(DELTA_TABLE_VERSION, self.version)]).into_response()
+        (
+            StatusCode::OK,
+            [(DELTA_TABLE_VERSION.clone(), self.version)],
+        )
+            .into_response()
     }
 }
 

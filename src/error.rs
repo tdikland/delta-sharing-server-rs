@@ -10,8 +10,12 @@ use crate::{
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
 
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerError {
+    // Authorization errors
+    Unauthorized,
     // input validation errors
     InvalidPaginationParameters { reason: String },
     InvalidTableVersion,

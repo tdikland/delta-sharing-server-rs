@@ -54,12 +54,19 @@ impl TableReader for DeltaTableReader {
     ) -> Result<TableMetadata, TableReaderError> {
         let delta_table = deltalake::open_table(storage_path).await?;
 
-        let min_reader_version = delta_table.get_min_reader_version() as u32;
+        // let protocol = dt.protocol()?;
+
+        // let md = dt.version();
+        // let md2 = dt.metadata().unwrap();
+
+        // let delta_table = dt;
+
+        let min_reader_version = delta_table.protocol()?.min_reader_version as u32;
         let table_protocol = ProtocolBuilder::new()
             .min_reader_version(min_reader_version)
             .build();
 
-        let metadata = delta_table.get_metadata()?;
+        let metadata = delta_table.metadata()?;
         let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();
         let configuration = metadata
             .configuration
@@ -89,12 +96,12 @@ impl TableReader for DeltaTableReader {
         let mut delta_table = deltalake::open_table(storage_path).await?;
         delta_table.load_version(version as i64).await?;
 
-        let min_reader_version = delta_table.get_min_reader_version() as u32;
+        let min_reader_version = delta_table.protocol()?.min_reader_version as u32;
         let table_protocol = ProtocolBuilder::new()
             .min_reader_version(min_reader_version)
             .build();
 
-        let metadata = delta_table.get_metadata()?;
+        let metadata = delta_table.metadata()?;
         let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();
         let configuration = metadata
             .configuration
@@ -108,7 +115,7 @@ impl TableReader for DeltaTableReader {
             .build();
 
         let mut table_files = vec![];
-        for file in delta_table.get_state().files() {
+        for file in delta_table.state.as_ref().unwrap().file_actions()? {
             let url = format!("{}/{}", storage_path, file.path);
             let f = FileBuilder::new(url, "").build();
             table_files.push(f.into());
