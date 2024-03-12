@@ -3,7 +3,7 @@ use axum::{extract::FromRequestParts, http::request::Parts};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{share_reader::Pagination, error::ServerError, reader::Version};
+use crate::{catalog::Pagination, error::ServerError, reader::Version};
 
 #[async_trait]
 impl<S> FromRequestParts<S> for Pagination

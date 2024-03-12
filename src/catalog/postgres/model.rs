@@ -1,7 +1,7 @@
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::share_reader::{Schema, Share, ShareReaderError, Table};
+use crate::catalog::{Schema, Share, ShareReaderError, Table};
 
 #[derive(Debug, FromRow)]
 pub struct ClientModel {

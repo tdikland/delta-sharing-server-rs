@@ -17,7 +17,7 @@ use serde::Serialize;
 
 use crate::protocol::action::{Metadata, Protocol};
 use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
-use crate::share_reader::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
+use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
 
 // mod delta;
 // mod parquet;

@@ -8,7 +8,7 @@ use aws_sdk_dynamodb::{
 };
 use delta_sharing_server::{
     auth::ClientId,
-    share_reader::{
+    catalog::{
         dynamo::{DynamoCatalog, DynamoCatalogConfig},
         Pagination, Schema, Share, ShareReader, Table,
     },

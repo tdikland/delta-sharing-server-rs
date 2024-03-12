@@ -1,6 +1,6 @@
 use delta_sharing_server::{
     auth::ClientId,
-    share_reader::{postgres::PostgresCatalog, Pagination, ShareReader},
+    catalog::{postgres::PostgresCatalog, Pagination, ShareReader},
 };
 use sqlx::PgPool;
 use testcontainers::{clients::Cli, Container, Image};

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use aws_sdk_dynamodb::types::AttributeValue;
 
 use super::config::DynamoCatalogConfig;
-use crate::share_reader::{Schema, Share, ShareReaderError, Table};
+use crate::catalog::{Schema, Share, ShareReaderError, Table};
 
 pub fn build_share_key(
     client_name: &str,

@@ -2,12 +2,14 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use tracing::instrument;
+
 use crate::{
     auth::ClientId,
+    catalog::{Page, Pagination, Schema, Share, ShareReader, Table},
     error::ServerError,
     protocol::table::{SignedTableData, TableMetadata, TableVersionNumber},
     reader::{TableReader, Version},
-    share_reader::{Page, Pagination, Schema, Share, ShareReader, Table},
     signer::UrlSigner,
 };
 
@@ -50,6 +52,7 @@ impl SharingServerState {
     }
 
     /// Get a list of shares in the share store.
+    #[instrument(skip(self))]
     pub async fn list_shares(
         &self,
         client_id: &ClientId,
@@ -186,7 +189,7 @@ impl SharingServerState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{reader::MockTableReader, share_reader::MockShareReader};
+    use crate::{catalog::MockShareReader, reader::MockTableReader};
     use insta::assert_json_snapshot;
 
     #[tokio::test]

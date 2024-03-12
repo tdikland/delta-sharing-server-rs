@@ -2,4 +2,4 @@
 source: tests/api.rs
 expression: response.text().await
 ---
-{"items":[{"name":"foo_share","id":"foo_share_id"}],"nextPageToken":"eyJwayI6IlNIQVJFI2Zvb19zaGFyZSNTQ0hFTUEjQUxMI1RBQkxFI0FMTCIsInNrIjoiU0hBUkUifQ=="}
+{"items":[{"name":"share1"}],"nextPageToken":"1"}

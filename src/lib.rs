@@ -30,7 +30,7 @@
 pub mod auth;
 pub mod protocol;
 pub mod reader;
-pub mod share_reader;
+pub mod catalog;
 pub mod signer;
 
 pub mod error;

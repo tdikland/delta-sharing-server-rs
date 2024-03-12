@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{
     reader::TableReaderError,
-    share_reader::{ShareReaderError, ShareReaderErrorKind},
+    catalog::{ShareReaderError, ShareReaderErrorKind},
 };
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;

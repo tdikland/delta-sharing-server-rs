@@ -84,7 +84,11 @@ impl ShareReader for FileCatalog {
     ) -> Result<Page<Share>, ShareReaderError> {
         let offset = pagination
             .page_token()
-            .map(|t| t.parse::<usize>().unwrap())
+            .map(|t| {
+                t.parse::<usize>()
+                    .map_err(|_| ShareReaderError::malformed_pagination("Invalid page token"))
+            })
+            .transpose()?
             .unwrap_or(0);
         let max_results = pagination.max_results.unwrap_or(500) as usize;
 

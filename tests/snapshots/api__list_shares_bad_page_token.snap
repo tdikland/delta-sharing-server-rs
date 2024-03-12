@@ -2,4 +2,4 @@
 source: tests/api.rs
 expression: response.text().await
 ---
-{"errorCode":"INVALID_PARAMETER_VALUE","message":"the `pageToken` query parameter is invalid"}
+{"errorCode":"INVALID_PARAMETER_VALUE","message":"the `pageToken` or `maxResults` parameter is invalid"}

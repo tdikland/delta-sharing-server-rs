@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
 use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
-use crate::{auth::ClientId, share_reader::dynamo::pagination::key_to_token};
+use crate::{auth::ClientId, catalog::dynamo::pagination::key_to_token};
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
     error::SdkError,

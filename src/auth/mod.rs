@@ -126,6 +126,7 @@ where
 
     fn call(&mut self, mut req: Request) -> Self::Future {
         let client_id = ClientId::Anonymous;
+        tracing::info!(client_id=%client_id, "authenticated");
         req.extensions_mut().insert(client_id);
         self.inner.call(req)
     }

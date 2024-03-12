@@ -1,5 +1,5 @@
 use aws_config::BehaviorVersion;
-use delta_sharing_server::share_reader::dynamo::{DynamoCatalog, DynamoCatalogConfig};
+use delta_sharing_server::catalog::dynamo::{DynamoCatalog, DynamoCatalogConfig};
 use delta_sharing_server::reader::delta::DeltaTableReader;
 use delta_sharing_server::router::build_sharing_server_router;
 use delta_sharing_server::signer::s3::S3UrlSigner;
