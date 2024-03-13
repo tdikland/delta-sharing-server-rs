@@ -75,8 +75,10 @@ impl From<SignedTableData> for ParquetResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 enum ParquetResponseLine {
     Protocol(ProtocolParquetLine),
+    #[serde(rename = "metaData")]
     Metadata(MetadataParquetLine),
     File(FileParquetLine),
     Add(AddParquetLine),
@@ -96,6 +98,7 @@ impl From<SignedDataFile> for ParquetResponseLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProtocolParquetLine {
     min_reader_version: u32,
 }
@@ -109,21 +112,29 @@ impl From<Protocol> for ProtocolParquetLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Format {
     provider: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct MetadataParquetLine {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     format: Format,
     schema_string: String,
     partition_columns: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     configuration: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     num_files: Option<u64>,
 }
 
@@ -148,14 +159,19 @@ impl From<Metadata> for MetadataParquetLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FileParquetLine {
     url: String,
     id: String,
     parition_values: Vec<String>,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     expiration_timestamp: Option<u64>,
 }
 
@@ -176,6 +192,7 @@ impl From<Add> for FileParquetLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AddParquetLine {
     url: String,
     id: String,
@@ -194,6 +211,7 @@ impl From<Add> for AddParquetLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CdfParquetLine {
     url: String,
     id: String,
@@ -211,6 +229,7 @@ impl From<AddCDCFile> for CdfParquetLine {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RemoveParquetLine {
     url: String,
     id: String,

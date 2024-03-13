@@ -3,13 +3,9 @@
 use std::{
     fmt::{self, Display},
     ops::Deref,
-    task::{Context, Poll},
 };
 
-use crate::error::Result as ServerResult;
-use axum::{extract::Request, middleware::Next};
-use http::StatusCode;
-use tower::{Layer, Service};
+pub mod public;
 
 /// Client identifier.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,14 +17,19 @@ pub enum ClientId {
 }
 
 impl ClientId {
-    /// Create a new anonymous client identifier.
+    /// Create a new unknown client identifier.
     pub fn anonymous() -> Self {
         Self::Anonymous
     }
 
+    /// Create a new unknown client identifier.
+    pub fn unknown() -> Self {
+        Self::Anonymous
+    }
+
     /// Create a new known client identifier.
-    pub fn known(id: impl Into<String>) -> Self {
-        Self::Known(id.into())
+    pub fn known<S: Into<String>>(client_id: S) -> Self {
+        Self::Known(client_id.into())
     }
 
     /// Get the client identifier as a string.
@@ -66,46 +67,5 @@ impl Display for ClientId {
             ClientId::Anonymous => write!(f, "ANONYMOUS"),
             ClientId::Known(id) => write!(f, "{}", id.as_str()),
         }
-    }
-}
-
-/// Authentication middleware.
-///
-/// Does not perform any authentication, but sets the client identifier to anonymous.
-#[derive(Clone)]
-pub struct NoAuthLayer;
-
-impl<S> Layer<S> for NoAuthLayer {
-    type Service = Auth<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        Auth { inner }
-    }
-}
-
-/// Authentication middleware.
-#[derive(Clone)]
-pub struct Auth<S> {
-    inner: S,
-}
-
-impl<S> Service<Request> for Auth<S>
-where
-    S: Service<Request> + Send + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, mut req: Request) -> Self::Future {
-        let client_id = ClientId::Anonymous;
-        tracing::info!(client_id=%client_id, "authenticated");
-        req.extensions_mut().insert(client_id);
-        self.inner.call(req)
     }
 }

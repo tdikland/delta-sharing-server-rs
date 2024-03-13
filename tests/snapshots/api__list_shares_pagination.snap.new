@@ -1,0 +1,6 @@
+---
+source: tests/api.rs
+assertion_line: 43
+expression: response_text
+---
+{"items":[{"name":"share2","id":"[id]"}],"nextPageToken":"[id]"}

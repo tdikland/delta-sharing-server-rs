@@ -1,26 +1,18 @@
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::io::Write;
 
-use axum::body::Body;
 use axum::http::HeaderName;
 use axum::response::Response;
-use axum::BoxError;
 use axum::{
     http::{header, StatusCode},
     response::IntoResponse,
     Json,
 };
-use bytes::{BufMut, BytesMut};
 use deltalake::kernel::{Metadata, Protocol};
-use futures_util::stream::TryStreamExt;
-use http::HeaderMap;
 use serde::Serialize;
 
 use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
-use crate::reader::{TableMetadata, TableVersionNumber};
-use crate::signer::{SignedDataFile, SignedTableData};
+use crate::reader::TableVersionNumber;
+use crate::signer::SignedDataFile;
 
 use self::delta::DeltaResponse;
 use self::parquet::ParquetResponse;
