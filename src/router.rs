@@ -144,9 +144,7 @@ async fn get_table_metadata(
                 "The required deletion vectors feature is not implemented.",
             ));
         }
-        return Err(ServerError::unsupported_operation(
-            "The required deletion vectors feature is not implemented.",
-        ));
+        return Ok(TableActionsResponse::new_delta(table_metadata));
     }
 
     Ok(TableActionsResponse::new_parquet(table_metadata))

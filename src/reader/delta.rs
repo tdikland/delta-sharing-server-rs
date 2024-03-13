@@ -78,7 +78,7 @@ impl TableReader for DeltaTableReader {
             storage_path,
             version
         );
-        let mut delta_table = match version {
+        let delta_table = match version {
             Version::Latest => deltalake::open_table(storage_path).await?,
             Version::Number(version) => {
                 deltalake::open_table_with_version(storage_path, version as i64).await?

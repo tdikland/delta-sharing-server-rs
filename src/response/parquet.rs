@@ -58,12 +58,7 @@ impl From<TableMetadata> for ParquetResponse {
 
 impl From<SignedTableData> for ParquetResponse {
     fn from(signed_table_data: SignedTableData) -> Self {
-        // TODO: transform lines
-        let lines = signed_table_data
-            .data
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<_>>();
+        let lines = signed_table_data.data.into_iter().map(Into::into).collect();
 
         Self {
             version: signed_table_data.version,
@@ -205,7 +200,7 @@ struct AddParquetLine {
 }
 
 impl From<Add> for AddParquetLine {
-    fn from(add: Add) -> Self {
+    fn from(_add: Add) -> Self {
         todo!()
     }
 }
@@ -223,7 +218,7 @@ struct CdfParquetLine {
 }
 
 impl From<AddCDCFile> for CdfParquetLine {
-    fn from(add_cdc_file: AddCDCFile) -> Self {
+    fn from(_add_cdc_file: AddCDCFile) -> Self {
         todo!()
     }
 }
@@ -241,7 +236,7 @@ struct RemoveParquetLine {
 }
 
 impl From<Remove> for RemoveParquetLine {
-    fn from(remove: Remove) -> Self {
+    fn from(_remove: Remove) -> Self {
         todo!()
     }
 }

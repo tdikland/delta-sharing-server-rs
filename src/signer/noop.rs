@@ -1,7 +1,10 @@
+//! A signer that does not sign URLs.
+
 use async_trait::async_trait;
 
 use super::UrlSigner;
 
+/// A signer that does not sign URLs.
 #[derive(Debug)]
 pub struct NoopSigner;
 

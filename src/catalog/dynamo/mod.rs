@@ -1,7 +1,5 @@
 //! DynamoDB based implementation of the Catalog trait
 
-use std::collections::HashMap;
-
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
 use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
@@ -15,7 +13,7 @@ use aws_sdk_dynamodb::{
         query::{QueryError, QueryOutput},
         transact_write_items::TransactWriteItemsError,
     },
-    types::{AttributeValue, Put, TransactWriteItem},
+    types::{Put, TransactWriteItem},
     Client,
 };
 
@@ -100,7 +98,8 @@ impl DynamoCatalog {
             .await
     }
 
-    async fn delete_share_item(&self) {
+    /// Delete a share from the catalog
+    pub async fn delete_share_item(&self) {
         todo!()
     }
 
@@ -172,7 +171,8 @@ impl DynamoCatalog {
             .await
     }
 
-    async fn delete_schema_item(&self) {
+    /// Delete a schema from the catalog
+    pub async fn delete_schema_item(&self) {
         todo!()
     }
 
@@ -273,7 +273,8 @@ impl DynamoCatalog {
             .await
     }
 
-    async fn delete_table_item(&self) {
+    /// Delete a table from the catalog
+    pub async fn delete_table_item(&self) {
         todo!()
     }
 }

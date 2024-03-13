@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use axum::http::HeaderName;
 use axum::response::Response;
 use axum::{
@@ -7,15 +5,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use deltalake::kernel::{Metadata, Protocol};
 use serde::Serialize;
-
-use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
-use crate::reader::TableVersionNumber;
-use crate::signer::SignedDataFile;
 
 use self::delta::DeltaResponse;
 use self::parquet::ParquetResponse;
+use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
+use crate::reader::TableVersionNumber;
 
 pub mod delta;
 pub mod parquet;
@@ -238,189 +233,6 @@ impl IntoResponse for TableActionsResponse {
         }
     }
 }
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum JsonWrapper {
-    Protocol(Protocol),
-    #[serde(rename = "metaData")]
-    Metadata(Metadata),
-    File(SignedDataFile),
-    // Add(SignedChangeFile),
-}
-
-// #[derive(Debug, Clone, Serialize)]
-// pub struct TableActionsResponse {
-//     version: TableVersionNumber,
-//     lines: Vec<JsonWrapper>,
-// }
-
-// #[derive(Debug, Clone, Serialize)]
-// struct StreamError;
-
-// impl Display for StreamError {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "StreamError")
-//     }
-// }
-
-// impl Error for StreamError {}
-
-// impl IntoResponse for TableActionsResponse {
-//     fn into_response(self) -> Response {
-//         let raw_stream =
-//             futures::stream::iter(self.lines.into_iter().map(Ok::<JsonWrapper, StreamError>));
-//         let stream = raw_stream.map_err(Into::into).and_then(|value| async move {
-//             let mut buf = BytesMut::new().writer();
-//             serde_json::to_writer(&mut buf, &value)?;
-//             buf.write_all(b"\n")?;
-//             Ok::<_, BoxError>(buf.into_inner().freeze())
-//         });
-
-//         let stream = Body::from_stream(stream);
-//         let version = self.version.to_string();
-
-//         let mut headers = HeaderMap::new();
-//         headers.insert(
-//             header::CONTENT_TYPE,
-//             "application/x-ndjson; charset=utf-8".parse().unwrap(),
-//         );
-//         headers.insert("Delta-Table-Version", version.parse().unwrap());
-//         let mut response = Response::new(stream);
-//         *response.headers_mut() = headers;
-
-//         response.into_response()
-//     }
-// }
-
-// impl IntoResponse for TableActionsResponse {
-//     fn into_response(self) -> Response {
-//         let mut buf = BytesMut::new().writer();
-//         for line in self.lines {
-//             serde_json::to_writer(&mut buf, &line).unwrap();
-//             buf.write_all(b"\n").unwrap();
-//         }
-
-//         let version = self.version.to_string();
-//         let headers = [
-//             (
-//                 header::CONTENT_TYPE.as_str(),
-//                 "application/x-ndjson; charset=utf-8",
-//             ),
-//             ("Delta-Table-Version", version.as_ref()),
-//         ];
-
-//         (StatusCode::OK, headers, buf.into_inner()).into_response()
-//     }
-// }
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ParquetProtocol {
-    min_reader_version: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ParquetMetadata {
-    id: String,
-    name: Option<String>,
-    description: Option<String>,
-    format: String, // TODO: format
-    schema_string: String,
-    partition_columns: Vec<String>,
-    configuration: HashMap<String, String>,
-    version: Option<u64>,
-    size: Option<u64>,
-    num_files: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ParquetFile {
-    path: String,
-    id: String,
-    partition_values: Vec<String>,
-    size: u64,
-    stats: Option<String>,
-    version: Option<u64>,
-    timestamp: Option<u64>,
-    expiration_timestamp: Option<u64>,
-}
-
-// #[derive(Debug, Clone, Serialize)]
-// pub enum ParquetAction {
-//     /// Protocol action
-//     Protocol(ParquetProtocol),
-//     /// Metadata action
-//     Metadata(ParquetMetadata),
-//     /// Data action
-//     File(ParquetFile),
-// }
-
-// #[derive(Debug, Clone, Serialize)]
-// pub struct ParquetSharingResponse {
-//     version: TableVersionNumber,
-//     protocol: ParquetAction,
-//     metadata: ParquetAction,
-//     data: Vec<ParquetAction>,
-// }
-
-// impl IntoResponse for ParquetSharingResponse {
-//     fn into_response(self) -> Response {
-//         let mut buf = BytesMut::new().writer();
-//         serde_json::to_writer(&mut buf, &self.protocol).unwrap();
-//         buf.write_all(b"\n").unwrap();
-//         serde_json::to_writer(&mut buf, &self.metadata).unwrap();
-//         buf.write_all(b"\n").unwrap();
-//         for file in self.data {
-//             serde_json::to_writer(&mut buf, &file).unwrap();
-//             buf.write_all(b"\n").unwrap();
-//         }
-
-//         let version = self.version.to_string();
-//         let headers = [
-//             (CONTENT_TYPE, "application/x-ndjson; charset=utf-8"),
-//             (DELTA_TABLE_VERSION, version.as_ref()),
-//         ];
-
-//         (StatusCode::OK, headers, buf.into_inner()).into_response()
-//     }
-// }
-
-// pub struct DeltaResponse {
-//     version: TableVersionNumber,
-//     protocol: Protocol,
-//     metadata: Metadata,
-//     data: Vec<SignedDataFile>,
-// }
-
-// impl From<TableMetadata> for TableActionsResponse {
-//     fn from(v: TableMetadata) -> Self {
-//         let lines = vec![
-//             JsonWrapper::Protocol(v.protocol),
-//             JsonWrapper::Metadata(v.metadata),
-//         ];
-
-//         Self {
-//             version: v.version,
-//             lines,
-//         }
-//     }
-// }
-
-// impl From<SignedTableData> for TableActionsResponse {
-//     fn from(value: SignedTableData) -> Self {
-//         let mut lines = vec![];
-//         lines.push(JsonWrapper::Protocol(value.protocol.clone()));
-//         lines.push(JsonWrapper::Metadata(value.metadata.clone()));
-//         for f in value.data.clone() {
-//             lines.push(JsonWrapper::File(f.clone()))
-//         }
-
-//         Self {
-//             version: value.version,
-//             lines,
-//         }
-//     }
-// }
 
 // #[cfg(test)]
 // mod test {
