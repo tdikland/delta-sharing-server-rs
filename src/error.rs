@@ -1,103 +1,109 @@
 #![allow(missing_docs)]
 
+use std::fmt::Display;
+
 use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
 use crate::{
-    reader::TableReaderError,
     catalog::{ShareReaderError, ShareReaderErrorKind},
+    reader::TableReaderError,
 };
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
-
-
+pub type Result<T> = core::result::Result<T, ServerError>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ServerError {
-    // Authorization errors
+pub enum ServerErrorKind {
+    InvalidQueryParameters,
     Unauthorized,
-    // input validation errors
-    InvalidPaginationParameters { reason: String },
-    InvalidTableVersion,
-    InvalidCapabilitiesHeader,
-    InvalidTableDataPredicates,
-    InvalidTableChangePredicates,
-    InvalidTableStartingTimestamp,
-    InvalidTableVersionRange { reason: String },
-    // share IO errors
-    InvalidPaginationToken { reason: String },
-    ShareNotFound { name: String },
-    SchemaNotFound { name: String },
-    TableNotFound { name: String },
-    ShareManagerError { reason: String },
-    // table IO errors
-    TableReaderError { reason: String },
-    // sharing configuration errors
-    UnsupportedTableFormat { format: String },
-    UnsupportedTableStorage { storage: String },
-    UnsupportedOperation { reason: String },
+    ResourceNotFound,
+    Internal,
+    UnsupportedOperation,
 }
 
-impl ServerError {
-    pub fn into_error_response(self) -> ErrorResponse {
+impl Display for ServerErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ServerError::InvalidPaginationParameters { .. } => ErrorResponse {
-                error_code: String::from("INVALID_PARAMETER_VALUE"),
-                message: String::from("the `pageToken` or `maxResults` parameter is invalid"),
-            },
-            ServerError::InvalidPaginationToken { .. } => ErrorResponse {
-                error_code: String::from("INVALID_PARAMETER_VALUE"),
-                message: String::from("the `pageToken` query parameter is invalid"),
-            },
-            ServerError::ShareNotFound { name } => ErrorResponse {
-                error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
-                message: format!("share `{}` not found", name),
-            },
-            ServerError::SchemaNotFound { name } => ErrorResponse {
-                error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
-                message: format!("schema `{}` not found", name),
-            },
-            ServerError::TableNotFound { name } => ErrorResponse {
-                error_code: String::from("RESOURCE_DOES_NOT_EXIST"),
-                message: format!("table `{}` not found", name),
-            },
-
-            ServerError::ShareManagerError { .. } => ErrorResponse {
-                error_code: String::from("INTERNAL_ERROR"),
-                message: String::new(),
-            },
-
-            _ => ErrorResponse {
-                error_code: String::from("Something went wrong"),
-                message: String::from("check your code"),
-            },
+            Self::Unauthorized => write!(f, "UNAUTHORIZED"),
+            Self::InvalidQueryParameters => write!(f, "INVALID_QUERY_PARAMETERS"),
+            Self::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
+            Self::Internal => write!(f, "INTERNAL"),
+            Self::UnsupportedOperation => write!(f, "UNSUPPORTED_OPERATION"),
         }
     }
 }
 
-pub type Result<T> = core::result::Result<T, ServerError>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerError {
+    kind: ServerErrorKind,
+    message: String,
+}
+
+impl ServerError {
+    pub fn new(kind: ServerErrorKind, message: String) -> Self {
+        Self { kind, message }
+    }
+
+    pub fn kind(&self) -> &ServerErrorKind {
+        &self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn invalid_query_params(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::InvalidQueryParameters, message.into())
+    }
+
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::Unauthorized, message.into())
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::ResourceNotFound, message.into())
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::Internal, message.into())
+    }
+
+    pub fn unsupported_operation(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::UnsupportedOperation, message.into())
+    }
+
+    pub fn into_error_response(self) -> ErrorResponse {
+        ErrorResponse {
+            error_code: self.kind.to_string(),
+            message: self.message,
+        }
+    }
+}
+
+impl Display for ServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.kind, self.message)
+    }
+}
+
+impl std::error::Error for ServerError {}
 
 impl From<ShareReaderError> for ServerError {
-    fn from(value: ShareReaderError) -> Self {
-        match value.kind() {
-            ShareReaderErrorKind::ResourceNotFound => ServerError::TableNotFound {
-                name: value.to_string(),
-            },
-            ShareReaderErrorKind::MalformedPagination => ServerError::InvalidPaginationParameters {
-                reason: value.to_string(),
-            },
-            ShareReaderErrorKind::Internal => ServerError::ShareManagerError {
-                reason: value.to_string(),
-            },
+    fn from(err: ShareReaderError) -> Self {
+        match err.kind() {
+            ShareReaderErrorKind::ResourceNotFound => ServerError::not_found(err.message()),
+            ShareReaderErrorKind::MalformedPagination => {
+                ServerError::invalid_query_params(err.message())
+            }
+            ShareReaderErrorKind::Internal => ServerError::internal(err.message()),
         }
     }
 }
 
 impl From<TableReaderError> for ServerError {
-    fn from(value: TableReaderError) -> Self {
-        ServerError::TableReaderError {
-            reason: value.to_string(),
-        }
+    fn from(err: TableReaderError) -> Self {
+        ServerError::internal(err.to_string())
     }
 }
 
@@ -110,34 +116,23 @@ pub struct ErrorResponse {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
-        match self {
-            Self::ShareNotFound { .. } => (
-                StatusCode::NOT_FOUND,
-                [(
-                    header::CONTENT_TYPE.as_str(),
-                    "application/json; charset=utf-8",
-                )],
-                Json(self.into_error_response()),
-            )
-                .into_response(),
-            Self::TableNotFound { .. } => (
-                StatusCode::NOT_FOUND,
-                [(
-                    header::CONTENT_TYPE.as_str(),
-                    "application/json; charset=utf-8",
-                )],
-                Json(self.into_error_response()),
-            )
-                .into_response(),
-            _ => (
-                StatusCode::BAD_REQUEST,
-                [(
-                    header::CONTENT_TYPE.as_str(),
-                    "application/json; charset=utf-8",
-                )],
-                Json(self.into_error_response()),
-            )
-                .into_response(),
-        }
+        tracing::error!(error = %self, details=?self, "Returning error response");
+        let status_code = match self.kind() {
+            ServerErrorKind::InvalidQueryParameters => StatusCode::BAD_REQUEST,
+            ServerErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+            ServerErrorKind::ResourceNotFound => StatusCode::NOT_FOUND,
+            ServerErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            ServerErrorKind::UnsupportedOperation => StatusCode::NOT_IMPLEMENTED,
+        };
+
+        (
+            status_code,
+            [(
+                header::CONTENT_TYPE.as_str(),
+                "application/json; charset=utf-8",
+            )],
+            Json(self.into_error_response()),
+        )
+            .into_response()
     }
 }

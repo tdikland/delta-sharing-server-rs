@@ -1,13 +1,16 @@
 //! Traits and types for creating pre-signed urls.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
-use crate::protocol::table::{
-    SignedDataFile, SignedTableData, UnsignedDataFile, UnsignedTableData,
-};
+use crate::reader::UnsignedDataFile;
+use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
+
+pub mod registry;
 
 mod adls;
 mod gcs;
+pub mod noop;
 pub mod s3;
 
 /// Trait implemented by object store clients to derive a pre-signed url from
@@ -19,30 +22,32 @@ pub trait UrlSigner: Send + Sync {
     async fn sign_url(&self, path: &str) -> String;
 
     /// Create a presigned url for a object store path within a data file.
-    async fn sign_data_file(&self, data_file: UnsignedDataFile) -> SignedDataFile {
+    async fn sign_data_file(&self, data_file: crate::reader::UnsignedDataFile) -> SignedDataFile {
         match data_file {
             UnsignedDataFile::File(mut file) => {
-                let signed_url = self.sign_url(file.url()).await;
-                *file.url_mut() = signed_url;
+                file.path = self.sign_url(&file.path).await;
                 SignedDataFile::File(file)
             }
             UnsignedDataFile::Add(mut add) => {
-                add.url = self.sign_url(&add.url).await;
+                add.path = self.sign_url(&add.path).await;
                 SignedDataFile::Add(add)
             }
             UnsignedDataFile::Cdf(mut cdf) => {
-                cdf.url = self.sign_url(&cdf.url).await;
+                cdf.path = self.sign_url(&cdf.path).await;
                 SignedDataFile::Cdf(cdf)
             }
             UnsignedDataFile::Remove(mut remove) => {
-                remove.url = self.sign_url(&remove.url).await;
+                remove.path = self.sign_url(&remove.path).await;
                 SignedDataFile::Remove(remove)
             }
         }
     }
 
     /// Create presigned urls for all data files in a table version.
-    async fn sign_table_data(&self, table_data: UnsignedTableData) -> SignedTableData {
+    async fn sign_table_data(
+        &self,
+        table_data: crate::reader::UnsignedTableData,
+    ) -> SignedTableData {
         let mut signed_data_files = vec![];
         for data_file in table_data.data {
             signed_data_files.push(self.sign_data_file(data_file).await);
@@ -56,12 +61,35 @@ pub trait UrlSigner: Send + Sync {
     }
 }
 
-#[derive(Debug)]
-pub struct NoopSigner;
+/// Table metadata and data descriptors with presigned urls.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SignedTableData {
+    /// Table version.
+    pub version: u64,
+    /// Minimum required table reader protocol implementation.
+    pub protocol: Protocol,
+    /// Table metadata
+    pub metadata: Metadata,
+    /// Set of data file representing the table
+    pub data: Vec<SignedDataFile>,
+}
 
-#[async_trait]
-impl UrlSigner for NoopSigner {
-    async fn sign_url(&self, path: &str) -> String {
-        path.to_string()
-    }
+/// A representation of data or mutation in a table reachable with a presigned
+/// url.
+///
+/// A table is represented as a set of files that together are the full table.
+/// Every data file has a presigned url that can be used to directly access the
+/// data file.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum SignedDataFile {
+    /// A file containing data part of the table.
+    File(Add),
+    /// A file containing data that was added to the table in this version.
+    Add(Add),
+    /// A file containing data that was changed in this version of the table.
+    Cdf(AddCDCFile),
+    /// A file containing data that was removed since the last table version.
+    Remove(Remove),
 }

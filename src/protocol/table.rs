@@ -100,6 +100,7 @@ pub enum UnsignedDataFile {
 /// data file.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[serde(untagged)]
 pub enum SignedDataFile {
     /// A file containing data part of the table.
     File(File),

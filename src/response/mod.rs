@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 
+use axum::body::Body;
 use axum::http::HeaderName;
 use axum::response::Response;
 use axum::BoxError;
@@ -12,12 +13,14 @@ use axum::{
     Json,
 };
 use bytes::{BufMut, BytesMut};
+use deltalake::kernel::{Metadata, Protocol};
 use futures_util::stream::TryStreamExt;
+use http::HeaderMap;
 use serde::Serialize;
 
-use crate::protocol::action::{Metadata, Protocol};
-use crate::protocol::table::{SignedDataFile, SignedTableData, TableMetadata, TableVersionNumber};
 use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
+use crate::reader::{TableMetadata, TableVersionNumber};
+use crate::signer::{SignedDataFile, SignedTableData};
 
 // mod delta;
 // mod parquet;
@@ -248,27 +251,26 @@ impl IntoResponse for TableActionsResponse {
     fn into_response(self) -> Response {
         let raw_stream =
             futures::stream::iter(self.lines.into_iter().map(Ok::<JsonWrapper, StreamError>));
-        let _stream = raw_stream.map_err(Into::into).and_then(|value| async move {
+        let stream = raw_stream.map_err(Into::into).and_then(|value| async move {
             let mut buf = BytesMut::new().writer();
             serde_json::to_writer(&mut buf, &value)?;
             buf.write_all(b"\n")?;
             Ok::<_, BoxError>(buf.into_inner().freeze())
         });
 
-        todo!()
-        // let stream = Body::wrap_stream(stream);
-        // let version = self.version.to_string();
+        let stream = Body::from_stream(stream);
+        let version = self.version.to_string();
 
-        // let mut headers = HeaderMap::new();
-        // headers.insert(
-        //     header::CONTENT_TYPE,
-        //     "application/x-ndjson; charset=utf-8".parse().unwrap(),
-        // );
-        // headers.insert("Delta-Table-Version", version.parse().unwrap());
-        // let mut response = Response::new(stream);
-        // *response.headers_mut() = headers;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            "application/x-ndjson; charset=utf-8".parse().unwrap(),
+        );
+        headers.insert("Delta-Table-Version", version.parse().unwrap());
+        let mut response = Response::new(stream);
+        *response.headers_mut() = headers;
 
-        // response.into_response()
+        response.into_response()
     }
 }
 

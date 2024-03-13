@@ -1,5 +1,5 @@
 ---
 source: tests/api.rs
-expression: response.text().await
+expression: response_text
 ---
-{"items":[{"name":"share2"}],"nextPageToken":"2"}
+{"items":[{"name":"share1","id":"[id]"}],"nextPageToken":"[id]"}

@@ -14,11 +14,8 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let value = serde_urlencoded::from_str(query).map_err(|e| {
-            ServerError::InvalidPaginationParameters {
-                reason: e.to_string(),
-            }
-        })?;
+        let value = serde_urlencoded::from_str(query)
+            .map_err(|e| ServerError::invalid_query_params(e.to_string()))?;
         Ok(value)
     }
 }
@@ -39,7 +36,7 @@ where
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
         let value = serde_urlencoded::from_str::<VersionQueryParams>(query)
-            .map_err(|_| ServerError::InvalidTableStartingTimestamp)?;
+            .map_err(|_| ServerError::invalid_query_params("invalid version query parameter"))?;
         match value.starting_timestamp {
             Some(ts) => Ok(Version::Timestamp(ts)),
             None => Ok(Version::Latest),
@@ -88,7 +85,7 @@ where
         if let Some(h) = header {
             let value = h
                 .to_str()
-                .map_err(|_| ServerError::InvalidCapabilitiesHeader)?;
+                .map_err(|_| ServerError::invalid_query_params("capability header"))?;
             let mut response_format = None;
             let mut reader_features = None;
 
@@ -169,7 +166,7 @@ where
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
         let v = serde_urlencoded::from_str::<RawTableChangeParams>(query)
-            .map_err(|_| ServerError::InvalidTableStartingTimestamp)?;
+            .map_err(|_| ServerError::invalid_query_params(""))?;
 
         let range = match (
             v.starting_version,
@@ -179,30 +176,25 @@ where
         ) {
             (Some(start), Some(end), None, None) => {
                 if start > end {
-                    return Err(ServerError::InvalidTableVersionRange {
-                        reason: "starting table version cannot be higher than ending table version"
-                            .to_string(),
-                    });
+                    return Err(ServerError::invalid_query_params(
+                        "starting table version cannot be higher than ending table version",
+                    ));
                 }
                 TableVersionRange::Version { start, end }
             }
             (None, None, Some(start), Some(end)) => {
-                let start_ts = start.parse::<DateTime<Utc>>().map_err(|e| {
-                    ServerError::InvalidTableVersionRange {
-                        reason: e.to_string(),
-                    }
-                })?;
-                let end_ts = end.parse::<DateTime<Utc>>().map_err(|e| {
-                    ServerError::InvalidTableVersionRange {
-                        reason: e.to_string(),
-                    }
-                })?;
+                let start_ts = start
+                    .parse::<DateTime<Utc>>()
+                    .map_err(|e| ServerError::invalid_query_params(e.to_string()))?;
+                let end_ts = end
+                    .parse::<DateTime<Utc>>()
+                    .map_err(|e| ServerError::invalid_query_params(e.to_string()))?;
 
                 if end_ts < start_ts {
                     let msg = String::from(
                         "starting table timestamp must be before ending table timestamp",
                     );
-                    return Err(ServerError::InvalidTableVersionRange { reason: msg });
+                    return Err(ServerError::invalid_query_params(msg));
                 }
                 TableVersionRange::Timestamp {
                     start: start_ts,
@@ -211,7 +203,7 @@ where
             }
             _ => {
                 let msg = String::from("specify the range of table version either with `starting_version` and `ending_version` or `starting_timestamp` and `ending_timestamp`");
-                return Err(ServerError::InvalidTableVersionRange { reason: msg });
+                return Err(ServerError::invalid_query_params(msg));
             }
         };
 
@@ -273,9 +265,7 @@ mod tests {
         let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
         assert_eq!(
             Pagination::from_request(req, &()).await.unwrap_err(),
-            ServerError::InvalidPaginationParameters {
-                reason: "invalid digit found in string".to_owned(),
-            }
+            ServerError::invalid_query_params("message")
         );
     }
 
@@ -309,7 +299,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             Version::from_request(req, &()).await.unwrap_err(),
-            ServerError::InvalidTableStartingTimestamp
+            ServerError::invalid_query_params("message")
         );
     }
 

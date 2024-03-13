@@ -91,17 +91,3 @@ pub struct ShareAclModel {
     pub share_id: Uuid,
     pub client_id: Uuid,
 }
-
-#[derive(Debug, FromRow)]
-pub struct SchemaAclModel {
-    pub id: Uuid,
-    pub schema_id: Uuid,
-    pub client_id: Uuid,
-}
-
-#[derive(Debug, FromRow)]
-pub struct TableAclModel {
-    pub id: Uuid,
-    pub table_id: Uuid,
-    pub client_id: Uuid,
-}

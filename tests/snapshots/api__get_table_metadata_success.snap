@@ -2,6 +2,6 @@
 source: tests/api.rs
 expression: response.text().await
 ---
-{"Protocol":{"min_reader_version":1}}
-{"Metadata":{"id":"abd7ff9d-5fac-48fb-8d13-06c3ce1811ac","name":null,"description":null,"format":{"provider":"Parquet"},"schema_string":"","partition_columns":[],"configuration":{"description":"CDC test Table","delta.enableChangeDataFeed":"true"},"version":null,"size":null,"num_files":null}}
+{"protocol":{"minReaderVersion":1}}
+{"metaData":{"id":"9f760748-1ae1-4ac5-bc9f-b8905ba72d80","format":{"provider":"parquet"},"schemaString":"{\"type\":\"struct\",\"fields\":[{\"name\":\"letter\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}},{\"name\":\"number\",\"type\":\"long\",\"nullable\":true,\"metadata\":{}},{\"name\":\"a_float\",\"type\":\"double\",\"nullable\":true,\"metadata\":{}}]}","partitionColumns":[]}}
 

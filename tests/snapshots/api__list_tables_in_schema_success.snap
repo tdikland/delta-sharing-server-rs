@@ -1,5 +1,5 @@
 ---
 source: tests/api.rs
-expression: response.text().await
+expression: response_text
 ---
-{"items":[{"name":"table1","schema":"schema1","share":"share1","shareId":"share1_id","id":"table1_id"}]}
+{"items":[{"name":"table1","schema":"schema1","share":"share1","shareId":"[id]","id":"[id]"},{"name":"table2","schema":"schema1","share":"share1","shareId":"[id]","id":"[id]"}]}

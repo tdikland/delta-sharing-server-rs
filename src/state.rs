@@ -1,6 +1,6 @@
 //! Delta Sharing server state.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use tracing::instrument;
 
@@ -8,9 +8,8 @@ use crate::{
     auth::ClientId,
     catalog::{Page, Pagination, Schema, Share, ShareReader, Table},
     error::ServerError,
-    protocol::table::{SignedTableData, TableMetadata, TableVersionNumber},
-    reader::{TableReader, Version},
-    signer::UrlSigner,
+    reader::{TableMetadata, TableReader, TableVersionNumber, Version},
+    signer::{registry::SignerRegistry, SignedTableData, UrlSigner},
 };
 
 /// State of the sharing server.
@@ -18,16 +17,20 @@ use crate::{
 pub struct SharingServerState {
     catalog: Arc<dyn ShareReader>,
     reader: Arc<dyn TableReader>,
-    url_signers: HashMap<String, Arc<dyn UrlSigner>>,
+    signers: SignerRegistry,
 }
 
 impl SharingServerState {
     /// Create a new sharing server state.
-    pub fn new(catalog: Arc<dyn ShareReader>, reader: Arc<dyn TableReader>) -> Self {
+    pub fn new(
+        catalog: Arc<dyn ShareReader>,
+        reader: Arc<dyn TableReader>,
+        signers: SignerRegistry,
+    ) -> Self {
         Self {
             catalog,
             reader,
-            url_signers: HashMap::new(),
+            signers,
         }
     }
 
@@ -43,12 +46,12 @@ impl SharingServerState {
 
     /// Add a url signer to the state.
     pub fn add_url_signer(&mut self, storage: impl Into<String>, signer: Arc<dyn UrlSigner>) {
-        self.url_signers.insert(storage.into(), signer);
+        self.signers.register(&storage.into(), signer);
     }
 
     /// Get the url signer for a specific object store.
     pub fn url_signer(&self, storage: &str) -> Option<Arc<dyn UrlSigner>> {
-        self.url_signers.get(storage).cloned()
+        self.signers.get(storage)
     }
 
     /// Get a list of shares in the share store.
@@ -130,6 +133,8 @@ impl SharingServerState {
             .get_table(client_id, share_name, schema_name, table_name)
             .await?;
 
+        dbg!(&table);
+
         let table_version = self
             .reader
             .get_table_version_number(table.storage_path(), version)
@@ -151,7 +156,11 @@ impl SharingServerState {
             .get_table(client_id, share_name, schema_name, table_name)
             .await?;
 
+        dbg!(&table);
+
         let metadata = self.reader.get_table_metadata(table.storage_path()).await?;
+
+        dbg!(&metadata);
 
         Ok(metadata)
     }
@@ -170,18 +179,20 @@ impl SharingServerState {
             .get_table(client_id, share_name, schema_name, table_name)
             .await?;
 
+        dbg!(&table);
+
         let table_data = self
             .reader
-            .get_table_data(table.storage_path(), 0, None, None)
+            .get_table_data(table.storage_path(), Version::Latest, None, None)
             .await?;
 
-        let signer = self
-            .url_signer("S3")
-            .ok_or(ServerError::UnsupportedTableStorage {
-                storage: String::from("S3"),
-            })?;
+        dbg!(&table_data);
 
+        let signer = self.signers.get_or_noop(table.storage_path());
         let signed_table_data = signer.sign_table_data(table_data).await;
+
+        dbg!(&signed_table_data);
+
         Ok(signed_table_data)
     }
 }
@@ -216,7 +227,11 @@ mod test {
             });
         let mock_reader = MockTableReader::new();
 
-        let state = SharingServerState::new(Arc::new(mock_table_manager), Arc::new(mock_reader));
+        let state = SharingServerState::new(
+            Arc::new(mock_table_manager),
+            Arc::new(mock_reader),
+            SignerRegistry::new(),
+        );
         let response = state
             .list_shares(&ClientId::Anonymous, &Pagination::default())
             .await

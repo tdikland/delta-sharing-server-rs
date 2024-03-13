@@ -1,0 +1,6 @@
+---
+source: tests/api.rs
+assertion_line: 148
+expression: response_text
+---
+{"items":[{"name":"table2","schema":"schema1","share":"share1","shareId":"[id]","id":"[id]"},{"name":"table1","schema":"schema1","share":"share1","shareId":"[id]","id":"[id]"}]}

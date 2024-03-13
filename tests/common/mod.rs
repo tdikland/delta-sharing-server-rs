@@ -3,4 +3,7 @@ pub mod server;
 
 // pub mod exp;
 
-mod catalog;
+pub mod catalog;
+
+pub mod api;
+pub mod macros;

@@ -1,0 +1,6 @@
+---
+source: tests/api.rs
+assertion_line: 25
+expression: response_text
+---
+{"items":[{"name":"share2","id":"[id]"},{"name":"share1","id":"[id]"}]}

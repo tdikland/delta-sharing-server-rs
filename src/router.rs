@@ -121,6 +121,7 @@ async fn get_table_version(
     let table_version_number = state
         .get_table_version_number(&client_id, &share_name, &schema_name, &table_name, version)
         .await?;
+
     Ok(TableVersionResponse::from(table_version_number))
 }
 
@@ -137,15 +138,15 @@ async fn get_table_metadata(
 
     // TODO: find out consequences of the delta-capability-header
     // e.g. check the protocol to see what reader features are required and checking against the header
-    if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version() > 1 {
+    if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version > 1 {
         if capabilities.has_reader_feature("deletionvectors") {
-            return Err(ServerError::UnsupportedOperation {
-                reason: String::from("The required delta reader feature is not implemented."),
-            });
+            return Err(ServerError::unsupported_operation(
+                "The required deletion vectors feature is not implemented.",
+            ));
         }
-        return Err(ServerError::UnsupportedOperation {
-            reason: String::from("The required delta reader feature is not implemented."),
-        });
+        return Err(ServerError::unsupported_operation(
+            "The required deletion vectors feature is not implemented.",
+        ));
     }
 
     Ok(TableActionsResponse::from(table_metadata))
@@ -180,7 +181,7 @@ async fn get_table_changes(
     Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
     // _version_range: TableChangePredicates,
 ) -> Result<TableActionsResponse> {
-    Err(ServerError::UnsupportedOperation {
-        reason: String::from("The `table_changes` endpoint is not yet implemented."),
-    })
+    Err(ServerError::unsupported_operation(
+        "The required deletion vectors feature is not implemented.",
+    ))
 }

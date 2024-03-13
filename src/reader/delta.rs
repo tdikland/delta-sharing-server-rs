@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::protocol::action::{FileBuilder, MetadataBuilder, ProtocolBuilder};
-use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData};
+use crate::reader::UnsignedDataFile;
 
-use super::{TableReader, TableReaderError, Version, VersionRange};
+use super::{
+    TableMetadata, TableReader, TableReaderError, TableVersionNumber, UnsignedTableData, Version,
+    VersionRange,
+};
 
 /// TableReader implementation for the Delta Lake format.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,77 +56,50 @@ impl TableReader for DeltaTableReader {
     ) -> Result<TableMetadata, TableReaderError> {
         let delta_table = deltalake::open_table(storage_path).await?;
 
-        // let protocol = dt.protocol()?;
-
-        // let md = dt.version();
-        // let md2 = dt.metadata().unwrap();
-
-        // let delta_table = dt;
-
-        let min_reader_version = delta_table.protocol()?.min_reader_version as u32;
-        let table_protocol = ProtocolBuilder::new()
-            .min_reader_version(min_reader_version)
-            .build();
-
-        let metadata = delta_table.metadata()?;
-        let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();
-        let configuration = metadata
-            .configuration
-            .clone()
-            .into_iter()
-            .map(|c| (c.0.clone(), c.1.unwrap_or_default()))
-            .collect();
-        let table_metadata = MetadataBuilder::new(metadata.id.clone(), schema)
-            .partition_columns(metadata.partition_columns.clone())
-            .configuration(configuration)
-            .build();
+        let protocol = delta_table.protocol()?.clone();
+        let metadata = delta_table.metadata()?.clone();
 
         Ok(TableMetadata {
             version: delta_table.version() as u64,
-            protocol: table_protocol,
-            metadata: table_metadata,
+            protocol,
+            metadata,
         })
     }
 
     async fn get_table_data(
         &self,
         storage_path: &str,
-        version: u64,
+        version: Version,
         _limit: Option<u64>,
         _predicates: Option<String>,
     ) -> Result<UnsignedTableData, TableReaderError> {
-        let mut delta_table = deltalake::open_table(storage_path).await?;
-        delta_table.load_version(version as i64).await?;
+        tracing::info!(
+            "get_table_data: storage_path={}, version={:?}",
+            storage_path,
+            version
+        );
+        let mut delta_table = match version {
+            Version::Latest => deltalake::open_table(storage_path).await?,
+            Version::Number(version) => {
+                deltalake::open_table_with_version(storage_path, version as i64).await?
+            }
+            Version::Timestamp(ts) => {
+                deltalake::open_table_with_ds(storage_path, ts.to_rfc3339()).await?
+            }
+        };
 
-        let min_reader_version = delta_table.protocol()?.min_reader_version as u32;
-        let table_protocol = ProtocolBuilder::new()
-            .min_reader_version(min_reader_version)
-            .build();
-
-        let metadata = delta_table.metadata()?;
-        let schema = serde_json::to_string(&delta_table.get_schema()?).unwrap();
-        let configuration = metadata
-            .configuration
-            .clone()
-            .into_iter()
-            .map(|c| (c.0.clone(), c.1.unwrap_or_default()))
-            .collect();
-        let table_metadata = MetadataBuilder::new(metadata.id.clone(), schema)
-            .partition_columns(metadata.partition_columns.clone())
-            .configuration(configuration)
-            .build();
+        let protocol = delta_table.protocol()?.clone();
+        let metadata = delta_table.metadata()?.clone();
 
         let mut table_files = vec![];
         for file in delta_table.state.as_ref().unwrap().file_actions()? {
-            let url = format!("{}/{}", storage_path, file.path);
-            let f = FileBuilder::new(url, "").build();
-            table_files.push(f.into());
+            table_files.push(UnsignedDataFile::File(file));
         }
 
         Ok(UnsignedTableData {
             version: delta_table.version() as u64,
-            protocol: table_protocol,
-            metadata: table_metadata,
+            protocol,
+            metadata,
             data: table_files,
         })
     }

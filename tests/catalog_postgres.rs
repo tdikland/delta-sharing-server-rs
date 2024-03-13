@@ -1,28 +1,25 @@
 use delta_sharing_server::{
     auth::ClientId,
-    catalog::{postgres::PostgresCatalog, Pagination, ShareReader},
+    catalog::{Pagination, ShareReader},
 };
-use sqlx::PgPool;
-use testcontainers::{clients::Cli, Container, Image};
-use testcontainers_modules::postgres::Postgres;
+use testcontainers::clients::Cli;
+
+mod common;
+use common::catalog::PostgresCatalogTestContext;
 
 #[tokio::test]
 async fn list_shares() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
 
     // List public shares
     let anonymous_client = ClientId::anonymous();
-    let anon_shares = catalog
+    let anon_shares = ctx
+        .catalog()
         .list_shares(&anonymous_client, &Pagination::default())
         .await
         .unwrap();
-
     assert_eq!(anon_shares.len(), 2);
     assert!(anon_shares.items().iter().any(|s| s.name() == "share1"));
     assert!(anon_shares.items().iter().any(|s| s.name() == "share2"));
@@ -30,18 +27,19 @@ async fn list_shares() {
 
     // List private shares of known client
     let existing_client = ClientId::known("client1");
-    let known_shares = catalog
+    let known_shares = ctx
+        .catalog()
         .list_shares(&existing_client, &Pagination::default())
         .await
         .unwrap();
-
     assert_eq!(known_shares.len(), 1);
     assert!(known_shares.items().iter().any(|s| s.name() == "share3"));
     assert_eq!(known_shares.next_page_token(), None);
 
-    // List private shares of unknown client yuields no results
+    // List private shares of unknown client yields no results
     let unknown_client = ClientId::known("client2");
-    let unknown_shares = catalog
+    let unknown_shares = ctx
+        .catalog()
         .list_shares(&unknown_client, &Pagination::default())
         .await
         .unwrap();
@@ -52,12 +50,9 @@ async fn list_shares() {
 #[tokio::test]
 async fn list_shares_pagination() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     // List first page of public shares
@@ -103,12 +98,9 @@ async fn list_shares_pagination() {
 #[tokio::test]
 async fn list_schemas() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let schemas = catalog
@@ -130,12 +122,9 @@ async fn list_schemas() {
 #[tokio::test]
 async fn list_schemas_pagination() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let schemas_page = catalog
@@ -149,12 +138,9 @@ async fn list_schemas_pagination() {
 #[tokio::test]
 async fn list_tables_share() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let tables = catalog
@@ -168,12 +154,9 @@ async fn list_tables_share() {
 #[tokio::test]
 async fn list_tables_share_pagination() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let tables_page = catalog
@@ -187,12 +170,9 @@ async fn list_tables_share_pagination() {
 #[tokio::test]
 async fn list_tables_in_schema() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let tables = catalog
@@ -206,12 +186,9 @@ async fn list_tables_in_schema() {
 #[tokio::test]
 async fn list_tables_in_schema_pagination() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let tables_page = catalog
@@ -230,12 +207,9 @@ async fn list_tables_in_schema_pagination() {
 #[tokio::test]
 async fn get_share() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let share = catalog.get_share(&client, "share1").await.unwrap();
@@ -254,12 +228,9 @@ async fn get_share() {
 #[tokio::test]
 async fn get_table() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
-    seed_catalog(&catalog).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
     let client = ClientId::anonymous();
 
     let table = catalog
@@ -269,7 +240,7 @@ async fn get_table() {
     assert_eq!(table.share_name(), "share1");
     assert_eq!(table.schema_name(), "schema1");
     assert_eq!(table.name(), "table1");
-    assert_eq!(table.storage_path(), "s3://bucket1/prefix1/");
+    assert_eq!(table.storage_path(), "p1");
 
     let table_not_found_error = catalog
         .get_table(&client, "share1", "schema1", "does-not-exist")
@@ -284,11 +255,8 @@ async fn get_table() {
 #[tokio::test]
 async fn client_lifecycle() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    let catalog = ctx.catalog();
 
     // Insert a client named foo
     let client_id = ClientId::known("foo");
@@ -301,6 +269,8 @@ async fn client_lifecycle() {
     assert_eq!(selected_client.unwrap().name, "foo");
 
     // TODO: fail to create the same client twice!
+    let dup_client = catalog.insert_client(&client_id).await;
+    assert!(dup_client.is_err());
 
     // Delete client by id
     let result = catalog.delete_client(&client.id).await;
@@ -314,11 +284,8 @@ async fn client_lifecycle() {
 #[tokio::test]
 async fn share_lifecycle() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    let catalog = ctx.catalog();
 
     // Insert a client named foo
     let client_id = ClientId::known("foo");
@@ -378,11 +345,8 @@ async fn share_lifecycle() {
 #[tokio::test]
 async fn schema_lifecycle() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    let catalog = ctx.catalog();
 
     // Insert a client named foo
     let client_id = ClientId::known("foo");
@@ -406,25 +370,12 @@ async fn schema_lifecycle() {
         .select_schema_by_name(&client_id, &share.name, "baz")
         .await
         .unwrap();
-    assert!(selected_schema.is_none());
-
-    // Grant access to the schema
-    catalog
-        .grant_access_to_schema(&client.id, &schema.id)
-        .await
-        .unwrap();
-
-    // Select the schema by name
-    let selected_schema = catalog
-        .select_schema_by_name(&client_id, &share.name, "baz")
-        .await
-        .unwrap();
     assert!(selected_schema.is_some());
     assert_eq!(selected_schema.unwrap().name, "baz");
 
-    // Revoke access to the schema
+    // Revoke access to share
     catalog
-        .revoke_access_to_schema(&client.id, &schema.id)
+        .revoke_access_to_share(&client.id, &share.id)
         .await
         .unwrap();
 
@@ -443,11 +394,9 @@ async fn schema_lifecycle() {
 #[tokio::test]
 async fn table_lifecycle() {
     let docker = Cli::default();
-    let postgres = Postgres::default();
-    let container = docker.run(postgres);
-
-    let pool = init_connection(&container).await;
-    let catalog = init_catalog(pool).await;
+    let ctx = PostgresCatalogTestContext::new(&docker).await;
+    ctx.seed().await.unwrap();
+    let catalog = ctx.catalog();
 
     // Insert a client named foo
     let client_id = ClientId::known("foo");
@@ -462,12 +411,8 @@ async fn table_lifecycle() {
         .unwrap();
     assert_eq!(share.name, "bar");
 
-    // Insert a schema named baz and grant access to the client
+    // Insert a schema named baz
     let schema = catalog.insert_schema(&share.id, "baz").await.unwrap();
-    catalog
-        .grant_access_to_schema(&client.id, &schema.id)
-        .await
-        .unwrap();
     assert_eq!(schema.name, "baz");
 
     // Insert a table named qux
@@ -482,25 +427,12 @@ async fn table_lifecycle() {
         .select_table_by_name(&client_id, &share.name, &schema.name, "qux")
         .await
         .unwrap();
-    assert!(selected_table.is_none());
-
-    // Grant access to the table
-    catalog
-        .grant_access_to_table(&client.id, &table.id)
-        .await
-        .unwrap();
-
-    // Select the table by name
-    let selected_table = catalog
-        .select_table_by_name(&client_id, &share.name, &schema.name, "qux")
-        .await
-        .unwrap();
     assert!(selected_table.is_some());
     assert_eq!(selected_table.unwrap().name, "qux");
 
-    // Revoke access to the table
+    // Revoke access to share
     catalog
-        .revoke_access_to_table(&client.id, &table.id)
+        .revoke_access_to_share(&client.id, &share.id)
         .await
         .unwrap();
 
@@ -514,91 +446,4 @@ async fn table_lifecycle() {
     // Delete table by id
     let result = catalog.delete_table(&table.id).await;
     assert!(result.is_ok());
-}
-
-async fn init_connection<I: Image>(container: &Container<'_, I>) -> PgPool {
-    let url = format!(
-        "postgres://postgres:postgres@127.0.0.1:{}/postgres",
-        container.get_host_port_ipv4(5432)
-    );
-    PgPool::connect(&url).await.unwrap()
-}
-
-async fn init_catalog(pool: PgPool) -> PostgresCatalog {
-    sqlx::migrate!("tests/migrations/postgres")
-        .run(&pool)
-        .await
-        .unwrap();
-
-    PostgresCatalog::from_pool(pool)
-}
-
-async fn seed_catalog(catalog: &PostgresCatalog) {
-    let anon_id = ClientId::anonymous();
-    let known_id = ClientId::known("client1");
-
-    let anon_client = catalog.insert_client(&anon_id).await.unwrap();
-    let known_client = catalog.insert_client(&known_id).await.unwrap();
-
-    // Insert shares
-    let share1 = catalog.insert_share("share1").await.unwrap();
-    let share2 = catalog.insert_share("share2").await.unwrap();
-    let share3 = catalog.insert_share("share3").await.unwrap();
-
-    // Mark the first two shares as publicly shared
-    catalog
-        .grant_access_to_share(&anon_client.id, &share1.id)
-        .await
-        .unwrap();
-    catalog
-        .grant_access_to_share(&anon_client.id, &share2.id)
-        .await
-        .unwrap();
-
-    // Mark the last share as privately shared to client1
-    catalog
-        .grant_access_to_share(&known_client.id, &share3.id)
-        .await
-        .unwrap();
-
-    // Insert schemas
-    let schema1 = catalog.insert_schema(&share1.id, "schema1").await.unwrap();
-    let schema2 = catalog.insert_schema(&share1.id, "schema2").await.unwrap();
-
-    catalog
-        .grant_access_to_schema(&anon_client.id, &schema1.id)
-        .await
-        .unwrap();
-    catalog
-        .grant_access_to_schema(&anon_client.id, &schema2.id)
-        .await
-        .unwrap();
-
-    // Insert tables
-    let table1 = catalog
-        .insert_table(&schema1.id, "table1", "s3://bucket1/prefix1/")
-        .await
-        .unwrap();
-    let table2 = catalog
-        .insert_table(&schema1.id, "table2", "s3://bucket1/prefix2/")
-        .await
-        .unwrap();
-    let table3 = catalog
-        .insert_table(&schema2.id, "table3", "s3://bucket2/prefix1/")
-        .await
-        .unwrap();
-
-    // Grant access to tables
-    catalog
-        .grant_access_to_table(&anon_client.id, &table1.id)
-        .await
-        .unwrap();
-    catalog
-        .grant_access_to_table(&anon_client.id, &table2.id)
-        .await
-        .unwrap();
-    catalog
-        .grant_access_to_table(&anon_client.id, &table3.id)
-        .await
-        .unwrap();
 }

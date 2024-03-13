@@ -1,5 +1,5 @@
 ---
 source: tests/api.rs
-expression: response.text().await
+expression: response_text
 ---
-{"share":{"name":"share1"}}
+{"share":{"name":"share1","id":"[id]"}}

@@ -57,7 +57,7 @@ mockall = "0.12.1"
 tokio = { version = "1.28.0", features = ["full"] }
 reqwest = { version = "0.11.25", features = ["rustls-tls"] }
 axum-macros = "0.4.1"
-insta = { version = "1.29.0", features = ["json"] }
+insta = { version = "1.29.0", features = ["json", "filters"] }
 tower = "0.4.13"
 tempfile = "3.6.0"
 aws-smithy-runtime = { version = "1", features = ["test-util"] }

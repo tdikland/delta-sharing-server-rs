@@ -28,7 +28,7 @@
 #![warn(missing_docs)]
 
 pub mod auth;
-pub mod protocol;
+// pub mod protocol;
 pub mod reader;
 pub mod catalog;
 pub mod signer;

@@ -4,11 +4,12 @@ use std::{error::Error, fmt::Display};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
-use crate::protocol::table::{TableMetadata, TableVersionNumber, UnsignedTableData};
+// use self::action::{Add, Cdf, File, Metadata, Protocol, Remove};
+use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
 
 /// Table reader implementation for the Delta Lake format.
-// mod action;
 pub mod delta;
 
 /// Trait for reading a specific table format from cloud storage.
@@ -38,7 +39,7 @@ pub trait TableReader: Send + Sync {
     async fn get_table_data(
         &self,
         storage_path: &str,
-        version: u64,
+        version: Version,
         limit: Option<u64>,
         predicates: Option<String>,
     ) -> Result<UnsignedTableData, TableReaderError>;
@@ -54,7 +55,51 @@ pub trait TableReader: Send + Sync {
     ) -> Result<UnsignedTableData, TableReaderError>;
 }
 
-pub struct TableData {}
+/// Table version number.
+pub type TableVersionNumber = u64;
+
+/// Table metadata for a given table version.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TableMetadata {
+    /// Table version.
+    pub version: u64,
+    /// Minimum required table reader protocol implementation.
+    pub protocol: Protocol,
+    /// Table metadata
+    pub metadata: Metadata,
+}
+
+/// Table metadata and data descriptors, not yet publicly accessible.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UnsignedTableData {
+    /// Table version.
+    pub version: u64,
+    /// Minimum required table reader protocol implementation.
+    pub protocol: Protocol,
+    /// Table metadata
+    pub metadata: Metadata,
+    /// Set of data file representing the table
+    pub data: Vec<UnsignedDataFile>,
+}
+
+/// A representation of data or mutation in a table referenced using an object
+/// store url.
+///
+/// A table is represented as a set of files that together are the full table.
+/// Every data file has a reference to the underlying object store in its url
+/// field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UnsignedDataFile {
+    /// A file containing data part of the table.
+    File(Add),
+    /// A file containing data that was added to the table in this version.
+    Add(Add),
+    /// A file containing data that was changed in this version of the table.
+    Cdf(AddCDCFile),
+    /// A file containing data that was removed since the last table version.
+    Remove(Remove),
+}
 
 /// Requested table version.
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -1,5 +1,0 @@
----
-source: tests/api.rs
-expression: response.text().await
----
-{"errorCode":"RESOURCE_DOES_NOT_EXIST","message":"share `not-existing-share` not found"}

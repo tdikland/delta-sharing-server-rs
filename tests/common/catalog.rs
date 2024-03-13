@@ -3,14 +3,14 @@ use sqlx::PgPool;
 use testcontainers::{clients::Cli, Container};
 use testcontainers_modules::postgres::Postgres;
 
-struct PostgresCatalogTestContext<'a> {
+pub struct PostgresCatalogTestContext<'a> {
     docker: &'a Cli,
     container: Container<'a, Postgres>,
     catalog: PostgresCatalog,
 }
 
 impl<'a> PostgresCatalogTestContext<'a> {
-    async fn new(docker: &'a Cli) -> Self {
+    pub async fn new(docker: &'a Cli) -> Self {
         // Start container
         let container = docker.run(Postgres::default());
 
@@ -39,7 +39,11 @@ impl<'a> PostgresCatalogTestContext<'a> {
         }
     }
 
-    async fn seed(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn catalog(&self) -> &PostgresCatalog {
+        &self.catalog
+    }
+
+    pub async fn seed(&self) -> Result<(), Box<dyn std::error::Error>> {
         let c = &self.catalog;
 
         let anon_id = ClientId::anonymous();
@@ -64,18 +68,10 @@ impl<'a> PostgresCatalogTestContext<'a> {
         let schema1 = c.insert_schema(&share1.id, "schema1").await?;
         let schema2 = c.insert_schema(&share1.id, "schema2").await?;
 
-        c.grant_access_to_schema(&anon.id, &schema1.id).await?;
-        c.grant_access_to_schema(&anon.id, &schema2.id).await?;
-
         // Insert tables
-        let table1 = c.insert_table(&schema1.id, "table1", "p1").await?;
-        let table2 = c.insert_table(&schema1.id, "table2", "p2").await?;
-        let table3 = c.insert_table(&schema2.id, "table3", "p3").await?;
-
-        // Grant access to tables
-        c.grant_access_to_table(&anon.id, &table1.id).await?;
-        c.grant_access_to_table(&anon.id, &table2.id).await?;
-        c.grant_access_to_table(&anon.id, &table3.id).await?;
+        let _table1 = c.insert_table(&schema1.id, "table1", "./tests/data/basic_append").await?;
+        let _table2 = c.insert_table(&schema1.id, "table2", "p2").await?;
+        let _table3 = c.insert_table(&schema2.id, "table3", "p3").await?;
 
         Ok(())
     }
