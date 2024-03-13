@@ -22,8 +22,11 @@ use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as Ta
 use crate::reader::{TableMetadata, TableVersionNumber};
 use crate::signer::{SignedDataFile, SignedTableData};
 
-// mod delta;
-// mod parquet;
+use self::delta::DeltaResponse;
+use self::parquet::ParquetResponse;
+
+pub mod delta;
+pub mod parquet;
 
 static DELTA_TABLE_VERSION: HeaderName = HeaderName::from_static("delta-table-version");
 
@@ -220,6 +223,30 @@ impl IntoResponse for TableVersionResponse {
     }
 }
 
+pub enum TableActionsResponse {
+    Parquet(ParquetResponse),
+    Delta(DeltaResponse),
+}
+
+impl TableActionsResponse {
+    pub fn new_parquet<R: Into<ParquetResponse>>(response: R) -> Self {
+        Self::Parquet(response.into())
+    }
+
+    pub fn new_delta<R: Into<DeltaResponse>>(response: R) -> Self {
+        Self::Delta(response.into())
+    }
+}
+
+impl IntoResponse for TableActionsResponse {
+    fn into_response(self) -> Response {
+        match self {
+            TableActionsResponse::Parquet(response) => response.into_response(),
+            TableActionsResponse::Delta(response) => response.into_response(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JsonWrapper {
@@ -230,49 +257,49 @@ pub enum JsonWrapper {
     // Add(SignedChangeFile),
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct TableActionsResponse {
-    version: TableVersionNumber,
-    lines: Vec<JsonWrapper>,
-}
+// #[derive(Debug, Clone, Serialize)]
+// pub struct TableActionsResponse {
+//     version: TableVersionNumber,
+//     lines: Vec<JsonWrapper>,
+// }
 
-#[derive(Debug, Clone, Serialize)]
-struct StreamError;
+// #[derive(Debug, Clone, Serialize)]
+// struct StreamError;
 
-impl Display for StreamError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StreamError")
-    }
-}
+// impl Display for StreamError {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "StreamError")
+//     }
+// }
 
-impl Error for StreamError {}
+// impl Error for StreamError {}
 
-impl IntoResponse for TableActionsResponse {
-    fn into_response(self) -> Response {
-        let raw_stream =
-            futures::stream::iter(self.lines.into_iter().map(Ok::<JsonWrapper, StreamError>));
-        let stream = raw_stream.map_err(Into::into).and_then(|value| async move {
-            let mut buf = BytesMut::new().writer();
-            serde_json::to_writer(&mut buf, &value)?;
-            buf.write_all(b"\n")?;
-            Ok::<_, BoxError>(buf.into_inner().freeze())
-        });
+// impl IntoResponse for TableActionsResponse {
+//     fn into_response(self) -> Response {
+//         let raw_stream =
+//             futures::stream::iter(self.lines.into_iter().map(Ok::<JsonWrapper, StreamError>));
+//         let stream = raw_stream.map_err(Into::into).and_then(|value| async move {
+//             let mut buf = BytesMut::new().writer();
+//             serde_json::to_writer(&mut buf, &value)?;
+//             buf.write_all(b"\n")?;
+//             Ok::<_, BoxError>(buf.into_inner().freeze())
+//         });
 
-        let stream = Body::from_stream(stream);
-        let version = self.version.to_string();
+//         let stream = Body::from_stream(stream);
+//         let version = self.version.to_string();
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            "application/x-ndjson; charset=utf-8".parse().unwrap(),
-        );
-        headers.insert("Delta-Table-Version", version.parse().unwrap());
-        let mut response = Response::new(stream);
-        *response.headers_mut() = headers;
+//         let mut headers = HeaderMap::new();
+//         headers.insert(
+//             header::CONTENT_TYPE,
+//             "application/x-ndjson; charset=utf-8".parse().unwrap(),
+//         );
+//         headers.insert("Delta-Table-Version", version.parse().unwrap());
+//         let mut response = Response::new(stream);
+//         *response.headers_mut() = headers;
 
-        response.into_response()
-    }
-}
+//         response.into_response()
+//     }
+// }
 
 // impl IntoResponse for TableActionsResponse {
 //     fn into_response(self) -> Response {
@@ -373,35 +400,35 @@ pub struct ParquetFile {
 //     data: Vec<SignedDataFile>,
 // }
 
-impl From<TableMetadata> for TableActionsResponse {
-    fn from(v: TableMetadata) -> Self {
-        let lines = vec![
-            JsonWrapper::Protocol(v.protocol),
-            JsonWrapper::Metadata(v.metadata),
-        ];
+// impl From<TableMetadata> for TableActionsResponse {
+//     fn from(v: TableMetadata) -> Self {
+//         let lines = vec![
+//             JsonWrapper::Protocol(v.protocol),
+//             JsonWrapper::Metadata(v.metadata),
+//         ];
 
-        Self {
-            version: v.version,
-            lines,
-        }
-    }
-}
+//         Self {
+//             version: v.version,
+//             lines,
+//         }
+//     }
+// }
 
-impl From<SignedTableData> for TableActionsResponse {
-    fn from(value: SignedTableData) -> Self {
-        let mut lines = vec![];
-        lines.push(JsonWrapper::Protocol(value.protocol.clone()));
-        lines.push(JsonWrapper::Metadata(value.metadata.clone()));
-        for f in value.data.clone() {
-            lines.push(JsonWrapper::File(f.clone()))
-        }
+// impl From<SignedTableData> for TableActionsResponse {
+//     fn from(value: SignedTableData) -> Self {
+//         let mut lines = vec![];
+//         lines.push(JsonWrapper::Protocol(value.protocol.clone()));
+//         lines.push(JsonWrapper::Metadata(value.metadata.clone()));
+//         for f in value.data.clone() {
+//             lines.push(JsonWrapper::File(f.clone()))
+//         }
 
-        Self {
-            version: value.version,
-            lines,
-        }
-    }
-}
+//         Self {
+//             version: value.version,
+//             lines,
+//         }
+//     }
+// }
 
 // #[cfg(test)]
 // mod test {

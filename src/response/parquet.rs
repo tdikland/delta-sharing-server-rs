@@ -1,25 +1,20 @@
 use axum::response::{IntoResponse, Response};
 use bytes::{BufMut, BytesMut};
+use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
 use http::{header, StatusCode};
 use serde::Serialize;
 use std::{collections::HashMap, io::Write};
 
-use crate::protocol::table::TableMetadata;
+use crate::{
+    reader::TableMetadata,
+    signer::{SignedDataFile, SignedTableData},
+};
 
-struct ParquetResponse {
+pub struct ParquetResponse {
     version: u64,
-    protocol: Protocol,
-    metadata: Metadata,
+    protocol: ParquetResponseLine,
+    metadata: ParquetResponseLine,
     lines: Vec<ParquetResponseLine>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-enum ParquetResponseLine {
-    Protocol(Protocol),
-    Metadata(Metadata),
-    Add(Add),
-    Cdf(Cdf),
-    Remove(Remove),
 }
 
 impl IntoResponse for ParquetResponse {
@@ -50,20 +45,67 @@ impl IntoResponse for ParquetResponse {
     }
 }
 
-// impl From<TableMetadata> for ParquetResponse {
-//     fn from(metadata: TableMetadata) -> Self {
-//         Self {
-//             version: metadata.version.unwrap_or(0),
-//             protocol,
-//             metadata,
-//             lines: vec![],
-//         }
-//     }
-// }
+impl From<TableMetadata> for ParquetResponse {
+    fn from(table_metadata: TableMetadata) -> Self {
+        Self {
+            version: table_metadata.version,
+            protocol: ParquetResponseLine::Protocol(table_metadata.protocol.into()),
+            metadata: ParquetResponseLine::Metadata(table_metadata.metadata.into()),
+            lines: vec![],
+        }
+    }
+}
+
+impl From<SignedTableData> for ParquetResponse {
+    fn from(signed_table_data: SignedTableData) -> Self {
+        // TODO: transform lines
+        let lines = signed_table_data
+            .data
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
+        Self {
+            version: signed_table_data.version,
+            protocol: ParquetResponseLine::Protocol(signed_table_data.protocol.into()),
+            metadata: ParquetResponseLine::Metadata(signed_table_data.metadata.into()),
+            lines,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
-struct Protocol {
+enum ParquetResponseLine {
+    Protocol(ProtocolParquetLine),
+    Metadata(MetadataParquetLine),
+    File(FileParquetLine),
+    Add(AddParquetLine),
+    Cdf(CdfParquetLine),
+    Remove(RemoveParquetLine),
+}
+
+impl From<SignedDataFile> for ParquetResponseLine {
+    fn from(signed_data_file: SignedDataFile) -> Self {
+        match signed_data_file {
+            SignedDataFile::File(file) => ParquetResponseLine::File(file.into()),
+            SignedDataFile::Add(add) => ParquetResponseLine::Add(add.into()),
+            SignedDataFile::Cdf(cdf) => ParquetResponseLine::Cdf(cdf.into()),
+            SignedDataFile::Remove(remove) => ParquetResponseLine::Remove(remove.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ProtocolParquetLine {
     min_reader_version: u32,
+}
+
+impl From<Protocol> for ProtocolParquetLine {
+    fn from(protocol: Protocol) -> Self {
+        Self {
+            min_reader_version: protocol.min_reader_version as u32,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -72,7 +114,7 @@ struct Format {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct Metadata {
+struct MetadataParquetLine {
     id: String,
     name: Option<String>,
     description: Option<String>,
@@ -85,8 +127,28 @@ struct Metadata {
     num_files: Option<u64>,
 }
 
+impl From<Metadata> for MetadataParquetLine {
+    fn from(metadata: Metadata) -> Self {
+        Self {
+            id: metadata.id,
+            name: metadata.name,
+            description: metadata.description,
+            format: Format {
+                provider: metadata.format.provider,
+            },
+            schema_string: metadata.schema_string,
+            partition_columns: metadata.partition_columns,
+            // TODO: can we derive these properties?
+            configuration: None,
+            version: None,
+            size: None,
+            num_files: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
-struct File {
+struct FileParquetLine {
     url: String,
     id: String,
     parition_values: Vec<String>,
@@ -97,8 +159,24 @@ struct File {
     expiration_timestamp: Option<u64>,
 }
 
+impl From<Add> for FileParquetLine {
+    fn from(add: Add) -> Self {
+        // TODO: Figure out this conversion
+        Self {
+            url: add.path,
+            id: String::from("TODO"),
+            parition_values: vec![],
+            size: add.size as u64,
+            stats: add.stats,
+            version: None,
+            timestamp: None,
+            expiration_timestamp: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
-struct Add {
+struct AddParquetLine {
     url: String,
     id: String,
     partition_values: Vec<String>,
@@ -109,8 +187,14 @@ struct Add {
     expiration_timestamp: Option<u64>,
 }
 
+impl From<Add> for AddParquetLine {
+    fn from(add: Add) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
-struct Cdf {
+struct CdfParquetLine {
     url: String,
     id: String,
     partition_values: Vec<String>,
@@ -120,8 +204,14 @@ struct Cdf {
     expiration_timestamp: Option<u64>,
 }
 
+impl From<AddCDCFile> for CdfParquetLine {
+    fn from(add_cdc_file: AddCDCFile) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
-struct Remove {
+struct RemoveParquetLine {
     url: String,
     id: String,
     partition_values: Vec<String>,
@@ -129,4 +219,10 @@ struct Remove {
     timestamp: u64,
     version: u32,
     expiration_timestamp: Option<u64>,
+}
+
+impl From<Remove> for RemoveParquetLine {
+    fn from(remove: Remove) -> Self {
+        todo!()
+    }
 }

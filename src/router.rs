@@ -149,7 +149,7 @@ async fn get_table_metadata(
         ));
     }
 
-    Ok(TableActionsResponse::from(table_metadata))
+    Ok(TableActionsResponse::new_parquet(table_metadata))
 }
 
 #[debug_handler]
@@ -170,7 +170,8 @@ async fn get_table_data(
             Version::Latest,
         )
         .await?;
-    Ok(data.into())
+
+    Ok(TableActionsResponse::new_parquet(data))
 }
 
 #[debug_handler]
