@@ -158,7 +158,7 @@ fn extract_attr_from_item(item: &HashMap<String, AttributeValue>, key: &str) -> 
 
 #[cfg(test)]
 mod test {
-    use crate::auth::ClientId;
+    use crate::auth::RecipientId;
 
     use super::*;
 
@@ -201,7 +201,7 @@ mod test {
     #[test]
     fn create_schema_key() {
         let config = DynamoCatalogConfig::new("test-table");
-        let client_id = ClientId::known("client");
+        let client_id = RecipientId::known("client");
         let share_name = "foo";
         let schema_name = "bar";
 

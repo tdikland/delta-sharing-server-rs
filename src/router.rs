@@ -11,7 +11,7 @@ use axum::{
 
 use crate::extract::Capabilities;
 use crate::{
-    auth::ClientId,
+    auth::RecipientId,
     catalog::Pagination,
     error::{Result, ServerError},
     reader::Version,
@@ -55,7 +55,7 @@ pub fn build_sharing_server_router(state: Arc<SharingServerState>) -> Router {
 #[debug_handler]
 async fn list_shares(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     pagination: Pagination,
 ) -> Result<ListSharesResponse> {
     let share_info_page = state.list_shares(&client_id, &pagination).await?;
@@ -65,7 +65,7 @@ async fn list_shares(
 #[debug_handler]
 async fn list_schemas(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListSchemasResponse> {
@@ -78,7 +78,7 @@ async fn list_schemas(
 #[debug_handler]
 async fn list_tables_in_share(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
@@ -91,7 +91,7 @@ async fn list_tables_in_share(
 #[debug_handler]
 async fn list_tables_in_schema(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     Path((share_name, schema_name)): Path<(String, String)>,
     pagination: Pagination,
 ) -> Result<ListTablesResponse> {
@@ -104,7 +104,7 @@ async fn list_tables_in_schema(
 #[debug_handler]
 async fn get_share(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     share_name: Path<String>,
 ) -> Result<GetShareResponse> {
     let share = state.catalog().get_share(&client_id, &share_name).await?;
@@ -114,7 +114,7 @@ async fn get_share(
 #[debug_handler]
 async fn get_table_version(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     version: Version,
 ) -> Result<TableVersionResponse> {
@@ -128,7 +128,7 @@ async fn get_table_version(
 #[debug_handler]
 async fn get_table_metadata(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     capabilities: Capabilities,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> Result<TableActionsResponse> {
@@ -153,7 +153,7 @@ async fn get_table_metadata(
 #[debug_handler]
 async fn get_table_data(
     state: State<Arc<SharingServerState>>,
-    client_id: Extension<ClientId>,
+    client_id: Extension<RecipientId>,
     _capabilities: Capabilities,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     // _predicates: TableDataPredicates,
@@ -175,7 +175,7 @@ async fn get_table_data(
 #[debug_handler]
 async fn get_table_changes(
     _state: State<Arc<SharingServerState>>,
-    _client_id: Extension<ClientId>,
+    _client_id: Extension<RecipientId>,
     _capabilities: Capabilities,
     Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
     // _version_range: TableChangePredicates,

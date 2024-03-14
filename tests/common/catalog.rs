@@ -1,4 +1,4 @@
-use delta_sharing_server::{auth::ClientId, catalog::postgres::PostgresCatalog};
+use delta_sharing_server::{auth::RecipientId, catalog::postgres::PostgresCatalog};
 use sqlx::PgPool;
 use testcontainers::{clients::Cli, Container};
 use testcontainers_modules::postgres::Postgres;
@@ -46,8 +46,8 @@ impl<'a> PostgresCatalogTestContext<'a> {
     pub async fn seed(&self) -> Result<(), Box<dyn std::error::Error>> {
         let c = &self.catalog;
 
-        let anon_id = ClientId::anonymous();
-        let known_id = ClientId::known("client1");
+        let anon_id = RecipientId::anonymous();
+        let known_id = RecipientId::known("client1");
 
         let anon = c.insert_client(&anon_id).await?;
         let known = c.insert_client(&known_id).await?;
@@ -69,7 +69,9 @@ impl<'a> PostgresCatalogTestContext<'a> {
         let schema2 = c.insert_schema(&share1.id, "schema2").await?;
 
         // Insert tables
-        let _table1 = c.insert_table(&schema1.id, "table1", "./tests/data/basic_append").await?;
+        let _table1 = c
+            .insert_table(&schema1.id, "table1", "./tests/data/basic_append")
+            .await?;
         let _table2 = c.insert_table(&schema1.id, "table2", "p2").await?;
         let _table3 = c.insert_table(&schema2.id, "table3", "p3").await?;
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 
-use crate::auth::ClientId;
+use crate::auth::RecipientId;
 
 use self::{
     model::{
@@ -14,7 +14,7 @@ use self::{
     pagination::PostgresCursor,
 };
 
-use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
+use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
 
 mod model;
 mod pagination;
@@ -651,10 +651,10 @@ impl PostgresCatalog {
 }
 
 #[async_trait]
-impl ShareReader for PostgresCatalog {
+impl Catalog for PostgresCatalog {
     async fn list_shares(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         cursor: &Pagination,
     ) -> Result<Page<Share>, ShareReaderError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
@@ -674,7 +674,7 @@ impl ShareReader for PostgresCatalog {
 
     async fn list_schemas(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<Schema>, ShareReaderError> {
@@ -697,7 +697,7 @@ impl ShareReader for PostgresCatalog {
 
     async fn list_tables_in_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<Table>, ShareReaderError> {
@@ -720,7 +720,7 @@ impl ShareReader for PostgresCatalog {
 
     async fn list_tables_in_schema(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
@@ -744,7 +744,7 @@ impl ShareReader for PostgresCatalog {
 
     async fn get_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
     ) -> Result<Share, ShareReaderError> {
         self.select_share_by_name(client_id, share_name)
@@ -758,7 +758,7 @@ impl ShareReader for PostgresCatalog {
 
     async fn get_table(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,

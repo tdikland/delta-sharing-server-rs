@@ -7,8 +7,8 @@ use std::{fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
-use crate::auth::ClientId;
+use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
+use crate::auth::RecipientId;
 
 /// The file format where the share configuration is stored.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -76,10 +76,10 @@ impl FileCatalog {
 }
 
 #[async_trait::async_trait]
-impl ShareReader for FileCatalog {
+impl Catalog for FileCatalog {
     async fn list_shares(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         pagination: &Pagination,
     ) -> Result<Page<Share>, ShareReaderError> {
         let offset = pagination
@@ -107,7 +107,7 @@ impl ShareReader for FileCatalog {
 
     async fn get_share(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         share_name: &str,
     ) -> Result<Share, ShareReaderError> {
         self.config
@@ -119,7 +119,7 @@ impl ShareReader for FileCatalog {
 
     async fn list_schemas(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         share_name: &str,
         _pagination: &Pagination,
     ) -> Result<Page<Schema>, ShareReaderError> {
@@ -129,7 +129,7 @@ impl ShareReader for FileCatalog {
 
     async fn list_tables_in_share(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         share_name: &str,
         _pagination: &Pagination,
     ) -> Result<Page<Table>, ShareReaderError> {
@@ -139,7 +139,7 @@ impl ShareReader for FileCatalog {
 
     async fn list_tables_in_schema(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         _cursor: &Pagination,
@@ -150,7 +150,7 @@ impl ShareReader for FileCatalog {
 
     async fn get_table(
         &self,
-        _client_id: &ClientId,
+        _client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
@@ -330,7 +330,7 @@ mod tests {
         let catalog = FileCatalog::new(temp_file.path().to_path_buf());
         assert_eq!(
             catalog
-                .list_shares(&ClientId::Anonymous, &Pagination::default())
+                .list_shares(&RecipientId::Anonymous, &Pagination::default())
                 .await
                 .unwrap(),
             Page::new(vec![], None)
@@ -343,7 +343,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
 
         let page = catalog
-            .list_shares(&ClientId::Anonymous, &Pagination::new(Some(2), None))
+            .list_shares(&RecipientId::Anonymous, &Pagination::new(Some(2), None))
             .await
             .unwrap();
         assert_eq!(page.items.len(), 2);
@@ -351,7 +351,7 @@ mod tests {
 
         let page = catalog
             .list_shares(
-                &ClientId::Anonymous,
+                &RecipientId::Anonymous,
                 &Pagination::new(Some(2), Some("2".to_string())),
             )
             .await
@@ -366,7 +366,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
         assert_eq!(
             catalog
-                .get_share(&ClientId::Anonymous, "share1")
+                .get_share(&RecipientId::Anonymous, "share1")
                 .await
                 .unwrap(),
             Share::new("share1".to_owned(), None)
@@ -379,7 +379,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
         assert_eq!(
             catalog
-                .list_schemas(&ClientId::Anonymous, "share1", &Pagination::default())
+                .list_schemas(&RecipientId::Anonymous, "share1", &Pagination::default())
                 .await
                 .unwrap(),
             Page::new(
@@ -395,7 +395,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
         assert_eq!(
             catalog
-                .list_tables_in_share(&ClientId::Anonymous, "share1"  , &Pagination::default())
+                .list_tables_in_share(&RecipientId::Anonymous, "share1"  , &Pagination::default())
                 .await
                 .unwrap(),
             Page::new(
@@ -425,7 +425,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
         assert_eq!(
             catalog
-                .list_tables_in_schema(&ClientId::Anonymous, "share1", "schema1", &Pagination::default())
+                .list_tables_in_schema(&RecipientId::Anonymous, "share1", "schema1", &Pagination::default())
                 .await
                 .unwrap(),
             Page::new(
@@ -455,7 +455,7 @@ mod tests {
         let catalog = FileCatalog::new(tempfile.path().to_path_buf());
         assert_eq!(
             catalog
-                .get_table(&ClientId::Anonymous, "share1", "schema1", "table1")
+                .get_table(&RecipientId::Anonymous, "share1", "schema1", "table1")
                 .await
                 .unwrap(),
             Table::new(

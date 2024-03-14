@@ -6,7 +6,7 @@ use axum::{
     response::Response,
 };
 use delta_sharing_server::{
-    auth::{ClientId, NoAuthLayer},
+    auth::{NoAuthLayer, RecipientId},
     error::ServerError,
     reader::delta::DeltaTableReader,
     router::build_sharing_server_router,
@@ -24,7 +24,7 @@ async fn auth_middleware(mut request: Request, next: Next) -> Result<Response, S
     if let Some(token) = request.headers().get(AUTHORIZATION) {
         let token = token.to_str().unwrap();
         if token == "Bearer valid_token" {
-            let client_id = ClientId::anonymous();
+            let client_id = RecipientId::anonymous();
             tracing::info!(client_id=%client_id, "authenticated");
             request.extensions_mut().insert(client_id);
             let response = next.run(request).await;

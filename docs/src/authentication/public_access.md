@@ -1,0 +1,3 @@
+# Public access
+
+The provided `PublicAccessAuthLayer` is a simple implementation of the required authentication middleware for the Delta Sharing server. This specific middleware will ignore the `AUTHORIZATION` header, and set the `RecipientId` to `RecipientId::Anonymous` for every request. This means that all requests are authenticated, but only shares that are accessible for `RecipientId::Anonymous` will be queryable with this authentication middleware.

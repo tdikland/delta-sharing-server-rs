@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use bytes::Bytes;
-use delta_sharing_server::auth::{ClientId, NoAuthLayer};
+use delta_sharing_server::auth::{NoAuthLayer, RecipientId};
 use delta_sharing_server::catalog::file::FileCatalog;
 use delta_sharing_server::reader::delta::DeltaTableReader;
 use delta_sharing_server::router::build_sharing_server_router;

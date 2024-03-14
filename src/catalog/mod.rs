@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display};
 
-use crate::auth::ClientId;
+use crate::auth::RecipientId;
 
 pub mod dynamo;
 pub mod file;
@@ -27,14 +27,14 @@ pub mod postgres;
 /// Trait for listing and reading shared objects in the Delta Sharing server.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait ShareReader: Send + Sync {
+pub trait Catalog: Send + Sync {
     /// Return a page of shares stored on the sharing server store accessible
     /// for the given client. The pagination argument is used to limit the
     /// amount of returned shares in this call and to resume listing from a
     /// specified point in the collection of shares.
     async fn list_shares(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         pagination: &Pagination,
     ) -> Result<Page<Share>, ShareReaderError>;
 
@@ -45,7 +45,7 @@ pub trait ShareReader: Send + Sync {
     /// collection of schemas.
     async fn list_schemas(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<Schema>, ShareReaderError>;
@@ -57,7 +57,7 @@ pub trait ShareReader: Send + Sync {
     /// collection of tables.
     async fn list_tables_in_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
     ) -> Result<Page<Table>, ShareReaderError>;
@@ -69,7 +69,7 @@ pub trait ShareReader: Send + Sync {
     /// collection of tables.
     async fn list_tables_in_schema(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
@@ -79,7 +79,7 @@ pub trait ShareReader: Send + Sync {
     /// given client.
     async fn get_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
     ) -> Result<Share, ShareReaderError>;
 
@@ -87,7 +87,7 @@ pub trait ShareReader: Send + Sync {
     /// schema if it is accessible for the given client.
     async fn get_table(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,

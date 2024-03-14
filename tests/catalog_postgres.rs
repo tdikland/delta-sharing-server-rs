@@ -1,6 +1,6 @@
 use delta_sharing_server::{
-    auth::ClientId,
-    catalog::{Pagination, ShareReader},
+    auth::RecipientId,
+    catalog::{Catalog, Pagination},
 };
 use testcontainers::clients::Cli;
 
@@ -14,7 +14,7 @@ async fn list_shares() {
     ctx.seed().await.unwrap();
 
     // List public shares
-    let anonymous_client = ClientId::anonymous();
+    let anonymous_client = RecipientId::anonymous();
     let anon_shares = ctx
         .catalog()
         .list_shares(&anonymous_client, &Pagination::default())
@@ -26,7 +26,7 @@ async fn list_shares() {
     assert_eq!(anon_shares.next_page_token(), None);
 
     // List private shares of known client
-    let existing_client = ClientId::known("client1");
+    let existing_client = RecipientId::known("client1");
     let known_shares = ctx
         .catalog()
         .list_shares(&existing_client, &Pagination::default())
@@ -37,7 +37,7 @@ async fn list_shares() {
     assert_eq!(known_shares.next_page_token(), None);
 
     // List private shares of unknown client yields no results
-    let unknown_client = ClientId::known("client2");
+    let unknown_client = RecipientId::known("client2");
     let unknown_shares = ctx
         .catalog()
         .list_shares(&unknown_client, &Pagination::default())
@@ -53,7 +53,7 @@ async fn list_shares_pagination() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     // List first page of public shares
     let shares_page1 = catalog
@@ -101,7 +101,7 @@ async fn list_schemas() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let schemas = catalog
         .list_schemas(&client, "share1", &Pagination::default())
@@ -125,7 +125,7 @@ async fn list_schemas_pagination() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let schemas_page = catalog
         .list_schemas(&client, "share1", &Pagination::new(Some(1), None))
@@ -141,7 +141,7 @@ async fn list_tables_share() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let tables = catalog
         .list_tables_in_share(&client, "share1", &Pagination::default())
@@ -157,7 +157,7 @@ async fn list_tables_share_pagination() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let tables_page = catalog
         .list_tables_in_share(&client, "share1", &Pagination::new(Some(1), None))
@@ -173,7 +173,7 @@ async fn list_tables_in_schema() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let tables = catalog
         .list_tables_in_schema(&client, "share1", "schema1", &Pagination::default())
@@ -189,7 +189,7 @@ async fn list_tables_in_schema_pagination() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let tables_page = catalog
         .list_tables_in_schema(
@@ -210,7 +210,7 @@ async fn get_share() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let share = catalog.get_share(&client, "share1").await.unwrap();
     assert_eq!(share.name(), "share1");
@@ -231,7 +231,7 @@ async fn get_table() {
     let ctx = PostgresCatalogTestContext::new(&docker).await;
     ctx.seed().await.unwrap();
     let catalog = ctx.catalog();
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let table = catalog
         .get_table(&client, "share1", "schema1", "table1")
@@ -259,7 +259,7 @@ async fn client_lifecycle() {
     let catalog = ctx.catalog();
 
     // Insert a client named foo
-    let client_id = ClientId::known("foo");
+    let client_id = RecipientId::known("foo");
     let client = catalog.insert_client(&client_id).await.unwrap();
     assert_eq!(client.name, "foo");
 
@@ -288,7 +288,7 @@ async fn share_lifecycle() {
     let catalog = ctx.catalog();
 
     // Insert a client named foo
-    let client_id = ClientId::known("foo");
+    let client_id = RecipientId::known("foo");
     let client = catalog.insert_client(&client_id).await.unwrap();
     assert_eq!(client.name, "foo");
 
@@ -349,7 +349,7 @@ async fn schema_lifecycle() {
     let catalog = ctx.catalog();
 
     // Insert a client named foo
-    let client_id = ClientId::known("foo");
+    let client_id = RecipientId::known("foo");
     let client = catalog.insert_client(&client_id).await.unwrap();
     assert_eq!(client.name, "foo");
 
@@ -399,7 +399,7 @@ async fn table_lifecycle() {
     let catalog = ctx.catalog();
 
     // Insert a client named foo
-    let client_id = ClientId::known("foo");
+    let client_id = RecipientId::known("foo");
     let client = catalog.insert_client(&client_id).await.unwrap();
     assert_eq!(client.name, "foo");
 

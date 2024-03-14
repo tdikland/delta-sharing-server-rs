@@ -7,10 +7,10 @@ use aws_sdk_dynamodb::{
     Client,
 };
 use delta_sharing_server::{
-    auth::ClientId,
+    auth::RecipientId,
     catalog::{
         dynamo::{DynamoCatalog, DynamoCatalogConfig},
-        Pagination, Schema, Share, ShareReader, Table,
+        Catalog, Pagination, Schema, Share, Table,
     },
 };
 use testcontainers::{clients::Cli, Container, Image};
@@ -27,7 +27,7 @@ async fn test_list_shares() {
     seed_catalog(&catalog).await;
 
     // List public shares
-    let anonymous_client = ClientId::anonymous();
+    let anonymous_client = RecipientId::anonymous();
     let anon_shares = catalog
         .list_shares(&anonymous_client, &Pagination::default())
         .await
@@ -42,7 +42,7 @@ async fn test_list_shares() {
     assert_eq!(anon_shares.next_page_token(), None);
 
     // List private shares of known client
-    let existing_client = ClientId::known("client1");
+    let existing_client = RecipientId::known("client1");
     let existing_shares = catalog
         .list_shares(&existing_client, &Pagination::default())
         .await
@@ -58,7 +58,7 @@ async fn test_list_shares() {
     assert_eq!(existing_shares.next_page_token(), None);
 
     // List private shares of unknown client yuields no results
-    let non_existing_client = ClientId::known("client2");
+    let non_existing_client = RecipientId::known("client2");
     let non_existing_shares = catalog
         .list_shares(&non_existing_client, &Pagination::default())
         .await
@@ -76,7 +76,7 @@ async fn test_list_shares_pagination() {
     let client = init_client(&container).await;
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     // List first page of public shares
     let shares_page1 = catalog
@@ -128,7 +128,7 @@ async fn list_schemas() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let schemas = catalog
         .list_schemas(&client, "share1", &Pagination::default())
@@ -153,7 +153,7 @@ async fn list_schemas_pagination() {
     let client = init_client(&container).await;
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
 
     let schemas_page = catalog
         .list_schemas(&client, "share1", &Pagination::new(Some(1), None))
@@ -173,7 +173,7 @@ async fn list_tables_share() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let tables = catalog
         .list_tables_in_share(&client, "share1", &Pagination::default())
         .await
@@ -192,7 +192,7 @@ async fn list_tables_share_pagination() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let tables_page = catalog
         .list_tables_in_share(&client, "share1", &Pagination::new(Some(1), None))
         .await
@@ -211,7 +211,7 @@ async fn list_tables_in_schema() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let tables = catalog
         .list_tables_in_schema(&client, "share1", "schema1", &Pagination::default())
         .await
@@ -246,7 +246,7 @@ async fn list_tables_in_schema_pagination() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let tables_page = catalog
         .list_tables_in_schema(
             &client,
@@ -270,7 +270,7 @@ async fn get_share() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let share = catalog.get_share(&client, "share1").await.unwrap();
     assert_eq!(share, Share::new("share1".to_owned(), None));
 
@@ -294,7 +294,7 @@ async fn get_table() {
     let catalog = init_catalog(client, "test-table").await;
     seed_catalog(&catalog).await;
 
-    let client = ClientId::anonymous();
+    let client = RecipientId::anonymous();
     let table = catalog
         .get_table(&client, "share1", "schema1", "table1")
         .await
@@ -571,8 +571,8 @@ async fn create_table(client: &Client, table_name: &str) -> bool {
 }
 
 async fn seed_catalog(catalog: &DynamoCatalog) {
-    let auth_client = ClientId::known("client1");
-    let anon_client = ClientId::anonymous();
+    let auth_client = RecipientId::known("client1");
+    let anon_client = RecipientId::anonymous();
 
     // Create public shares
     catalog

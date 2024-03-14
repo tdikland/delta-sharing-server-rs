@@ -2,8 +2,8 @@
 
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
-use super::{Page, Pagination, Schema, Share, ShareReader, ShareReaderError, Table};
-use crate::{auth::ClientId, catalog::dynamo::pagination::key_to_token};
+use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
+use crate::{auth::RecipientId, catalog::dynamo::pagination::key_to_token};
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
     error::SdkError,
@@ -280,10 +280,10 @@ impl DynamoCatalog {
 }
 
 #[async_trait]
-impl ShareReader for DynamoCatalog {
+impl Catalog for DynamoCatalog {
     async fn list_shares(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         pagination: &Pagination,
     ) -> Result<Page<Share>, ShareReaderError> {
         let output = self.query_share_items(client_id, pagination).await?;
@@ -300,7 +300,7 @@ impl ShareReader for DynamoCatalog {
 
     async fn list_schemas(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
     ) -> Result<Page<Schema>, ShareReaderError> {
@@ -320,7 +320,7 @@ impl ShareReader for DynamoCatalog {
 
     async fn list_tables_in_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
     ) -> Result<Page<Table>, ShareReaderError> {
@@ -340,7 +340,7 @@ impl ShareReader for DynamoCatalog {
 
     async fn list_tables_in_schema(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
@@ -361,7 +361,7 @@ impl ShareReader for DynamoCatalog {
 
     async fn get_share(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
     ) -> Result<Share, ShareReaderError> {
         let output = self.get_share_item(client_id, share_name).await?;
@@ -374,7 +374,7 @@ impl ShareReader for DynamoCatalog {
 
     async fn get_table(
         &self,
-        client_id: &ClientId,
+        client_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
