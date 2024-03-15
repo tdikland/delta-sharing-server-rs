@@ -8,13 +8,13 @@ use crate::auth::RecipientId;
 
 use self::{
     model::{
-        ClientModel, SchemaInfoModel, SchemaModel, ShareAclModel, ShareInfoModel, ShareModel,
+        RecipientModel, SchemaInfoModel, SchemaModel, ShareAclModel, ShareInfoModel, ShareModel,
         TableInfoModel, TableModel,
     },
     pagination::PostgresCursor,
 };
 
-use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
+use super::{Catalog, CatalogError, Page, Pagination, Schema, Share, Table};
 
 mod model;
 mod pagination;
@@ -61,9 +61,9 @@ impl PostgresCatalog {
     /// assert_eq!(client.name, "foo");
     /// # Ok::<(), Box<dyn std::error::Error>> };
     /// # Ok(()) }
-    pub async fn insert_client(&self, client_name: &str) -> Result<ClientModel, sqlx::Error> {
+    pub async fn insert_recipient(&self, recipient_name: &str) -> Result<RecipientModel, sqlx::Error> {
         let client = sqlx::query_as("INSERT INTO client (name) VALUES ($1) RETURNING *;")
-            .bind(client_name)
+            .bind(recipient_name)
             .fetch_one(&self.pool)
             .await?;
 
@@ -91,10 +91,10 @@ impl PostgresCatalog {
     /// assert_eq!(client.unwrap().name, "foo");
     /// # Ok::<(), Box<dyn std::error::Error>> };
     /// # Ok(()) }
-    pub async fn select_client_by_name(
+    pub async fn select_recipient_by_name(
         &self,
-        client_name: &str,
-    ) -> Result<Option<ClientModel>, sqlx::Error> {
+        recipient_name: &str,
+    ) -> Result<Option<RecipientModel>, sqlx::Error> {
         let client = sqlx::query_as(
             r#"
             SELECT
@@ -104,7 +104,7 @@ impl PostgresCatalog {
             WHERE name = $1;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -192,7 +192,7 @@ impl PostgresCatalog {
     /// # Ok(()) }
     pub async fn select_share_by_name(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         share_name: &str,
     ) -> Result<Option<ShareInfoModel>, sqlx::Error> {
         let share = sqlx::query_as(
@@ -212,7 +212,7 @@ impl PostgresCatalog {
         WHERE s.name = $2;
         "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(share_name)
         .fetch_optional(&self.pool)
         .await?;
@@ -243,7 +243,7 @@ impl PostgresCatalog {
     /// # Ok(()) }
     pub async fn select_shares(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         cursor: &PostgresCursor,
     ) -> Result<Vec<ShareInfoModel>, sqlx::Error> {
         let shares = sqlx::query_as(
@@ -265,7 +265,7 @@ impl PostgresCatalog {
             LIMIT $3;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(cursor.last_seen_id())
         .bind(cursor.limit())
         .fetch_all(&self.pool)
@@ -439,7 +439,7 @@ impl PostgresCatalog {
     /// Select all schemas within a shares that a client has access to.
     pub async fn select_schemas(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         share_name: &str,
         cursor: &PostgresCursor,
     ) -> Result<Vec<SchemaInfoModel>, sqlx::Error> {
@@ -464,7 +464,7 @@ impl PostgresCatalog {
             LIMIT $4;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(share_name)
         .bind(cursor.last_seen_id())
         .bind(cursor.limit())
@@ -510,7 +510,7 @@ impl PostgresCatalog {
     /// Select a table by name.
     pub async fn select_table_by_name(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
@@ -538,7 +538,7 @@ impl PostgresCatalog {
             WHERE sh.name = $2 AND sc.name = $3 AND t.name = $4;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(share_name)
         .bind(schema_name)
         .bind(table_name)
@@ -551,7 +551,7 @@ impl PostgresCatalog {
     /// Select all tables within a schema that a client has access to.
     pub async fn select_tables_by_schema(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         share_name: &str,
         schema_name: &str,
         cursor: &PostgresCursor,
@@ -581,7 +581,7 @@ impl PostgresCatalog {
             LIMIT $5;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(share_name)
         .bind(schema_name)
         .bind(cursor.last_seen_id())
@@ -595,7 +595,7 @@ impl PostgresCatalog {
     /// Select all tables within a share that a client has access to.
     pub async fn select_tables_by_share(
         &self,
-        client_name: &str,
+        recipient_name: &str,
         share_name: &str,
         cursor: &PostgresCursor,
     ) -> Result<Vec<TableInfoModel>, sqlx::Error> {
@@ -624,7 +624,7 @@ impl PostgresCatalog {
             LIMIT $4;
             "#,
         )
-        .bind(client_name)
+        .bind(recipient_name)
         .bind(share_name)
         .bind(cursor.last_seen_id())
         .bind(cursor.limit())
@@ -656,9 +656,9 @@ impl Catalog for PostgresCatalog {
         &self,
         client_id: &RecipientId,
         cursor: &Pagination,
-    ) -> Result<Page<Share>, ShareReaderError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
+            .map_err(|e| CatalogError::malformed_pagination(e.to_string()))?;
         let shares_info_models = self.select_shares(client_id, &pg_cursor).await?;
 
         let shares = shares_info_models
@@ -677,9 +677,9 @@ impl Catalog for PostgresCatalog {
         client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Schema>, ShareReaderError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
+            .map_err(|e| CatalogError::malformed_pagination(e.to_string()))?;
         let schemas_models = self
             .select_schemas(client_id, share_name, &pg_cursor)
             .await?;
@@ -700,9 +700,9 @@ impl Catalog for PostgresCatalog {
         client_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
+            .map_err(|e| CatalogError::malformed_pagination(e.to_string()))?;
         let table_models = self
             .select_tables_by_share(client_id, share_name, &pg_cursor)
             .await?;
@@ -724,9 +724,9 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let pg_cursor = PostgresCursor::try_from(cursor.clone())
-            .map_err(|e| ShareReaderError::malformed_pagination(e.to_string()))?;
+            .map_err(|e| CatalogError::malformed_pagination(e.to_string()))?;
         let table_models = self
             .select_tables_by_schema(client_id, share_name, schema_name, &pg_cursor)
             .await?;
@@ -746,10 +746,10 @@ impl Catalog for PostgresCatalog {
         &self,
         client_id: &RecipientId,
         share_name: &str,
-    ) -> Result<Share, ShareReaderError> {
+    ) -> Result<Share, CatalogError> {
         self.select_share_by_name(client_id, share_name)
             .await?
-            .ok_or(ShareReaderError::not_found(format!(
+            .ok_or(CatalogError::not_found(format!(
                 "share `{}` does not exist or is not accessible",
                 share_name
             )))
@@ -762,10 +762,10 @@ impl Catalog for PostgresCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError> {
+    ) -> Result<Table, CatalogError> {
         self.select_table_by_name(client_id, share_name, schema_name, table_name)
             .await?
-            .ok_or(ShareReaderError::not_found(format!(
+            .ok_or(CatalogError::not_found(format!(
                 "table `{}.{}.{}` does not exist or is not accessible",
                 share_name, schema_name, table_name
             )))
@@ -773,8 +773,8 @@ impl Catalog for PostgresCatalog {
     }
 }
 
-impl From<sqlx::Error> for ShareReaderError {
+impl From<sqlx::Error> for CatalogError {
     fn from(err: sqlx::Error) -> Self {
-        ShareReaderError::internal(err.to_string())
+        CatalogError::internal(err.to_string())
     }
 }

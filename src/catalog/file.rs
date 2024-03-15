@@ -7,7 +7,7 @@ use std::{fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
+use super::{Catalog, CatalogError, Page, Pagination, Schema, Share, Table};
 use crate::auth::RecipientId;
 
 /// The file format where the share configuration is stored.
@@ -68,7 +68,7 @@ impl FileCatalog {
         self.format
     }
 
-    fn read_from_file(path: &PathBuf) -> Result<ShareFile, ShareReaderError> {
+    fn read_from_file(path: &PathBuf) -> Result<ShareFile, CatalogError> {
         let handle = std::fs::OpenOptions::new().read(true).open(path).unwrap();
         let shares_file: ShareFile = serde_yaml::from_reader(handle).unwrap();
         Ok(shares_file)
@@ -81,12 +81,12 @@ impl Catalog for FileCatalog {
         &self,
         _client_id: &RecipientId,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, ShareReaderError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let offset = pagination
             .page_token()
             .map(|t| {
                 t.parse::<usize>()
-                    .map_err(|_| ShareReaderError::malformed_pagination("Invalid page token"))
+                    .map_err(|_| CatalogError::malformed_pagination("Invalid page token"))
             })
             .transpose()?
             .unwrap_or(0);
@@ -109,12 +109,12 @@ impl Catalog for FileCatalog {
         &self,
         _client_id: &RecipientId,
         share_name: &str,
-    ) -> Result<Share, ShareReaderError> {
+    ) -> Result<Share, CatalogError> {
         self.config
             .shares()
             .into_iter()
             .find(|share| share.name() == share_name)
-            .ok_or(ShareReaderError::not_found("Share not found"))
+            .ok_or(CatalogError::not_found("Share not found"))
     }
 
     async fn list_schemas(
@@ -122,7 +122,7 @@ impl Catalog for FileCatalog {
         _client_id: &RecipientId,
         share_name: &str,
         _pagination: &Pagination,
-    ) -> Result<Page<Schema>, ShareReaderError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let schemas = self.config.schemas(share_name);
         Ok(Page::new(schemas, None))
     }
@@ -132,7 +132,7 @@ impl Catalog for FileCatalog {
         _client_id: &RecipientId,
         share_name: &str,
         _pagination: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let tables = self.config.tables_in_share(share_name);
         Ok(Page::new(tables, None))
     }
@@ -143,7 +143,7 @@ impl Catalog for FileCatalog {
         share_name: &str,
         schema_name: &str,
         _cursor: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let tables = self.config.tables_in_schema(share_name, schema_name);
         Ok(Page::new(tables, None))
     }
@@ -154,12 +154,12 @@ impl Catalog for FileCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError> {
+    ) -> Result<Table, CatalogError> {
         let tables = self.config.tables_in_schema(share_name, schema_name);
         tables
             .into_iter()
             .find(|table| table.name() == table_name)
-            .ok_or(ShareReaderError::not_found("table not found"))
+            .ok_or(CatalogError::not_found("table not found"))
     }
 }
 

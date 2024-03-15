@@ -6,17 +6,17 @@
 //! types that are used by the sharing server to list and get information about
 //! the shared objects.
 //!
-//! The [`ShareReader`] trait is implemented by the different share managers
+//! The [`Catalog`] trait is implemented by the different share managers
 //! that each may represent a different backing store for the shared objects.
-//! The [`ShareReader`] trait provides methods to list shares, schemas and
+//! The [`Catalog`] trait provides methods to list shares, schemas and
 //! tables and to get details about a specific share or table. The
-//! [`ClientId`]` type is used to identify the client that is requesting the
-//! shared objects. Based on the passed [`ClientId`] the share manager can
+//! [`RecipientId`]` type is used to identify the client that is requesting the
+//! shared objects. Based on the passed [`RecipientId`] the share manager can
 //! decide which shares, schemas and tables are available to the client.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt::Display};
+use std::{collections::HashMap, error::Error, fmt::Display};
 
 use crate::auth::RecipientId;
 
@@ -29,69 +29,69 @@ pub mod postgres;
 #[async_trait]
 pub trait Catalog: Send + Sync {
     /// Return a page of shares stored on the sharing server store accessible
-    /// for the given client. The pagination argument is used to limit the
+    /// for the given recipient. The pagination argument is used to limit the
     /// amount of returned shares in this call and to resume listing from a
     /// specified point in the collection of shares.
     async fn list_shares(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, ShareReaderError>;
+    ) -> Result<Page<Share>, CatalogError>;
 
     /// Return a page of schemas stored on the sharing server store that belong
-    /// to the specified share and are accessible for the given client. The
+    /// to the specified share if accessible for the given recipient. The
     /// pagination argument is used to limit the amount of returned schemas in
     /// this call and to resume listing from a specified point in the
     /// collection of schemas.
     async fn list_schemas(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Schema>, ShareReaderError>;
+    ) -> Result<Page<Schema>, CatalogError>;
 
     /// Return a page of tables stored on the sharing server store that belong
-    /// to the specified share and are accessible for the given client. The
+    /// to the specified share if accessible for the given recipient. The
     /// pagination argument is used to limit the amount of returned tables in
     /// this call and to resume listing from a specified point in the
     /// collection of tables.
     async fn list_tables_in_share(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         share_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError>;
+    ) -> Result<Page<Table>, CatalogError>;
 
     /// Return a page of tables stored on the sharing server store that belong
-    /// to the specified share+schema and are accessible for the given client.
+    /// to the specified share+schema and are accessible for the given recipient.
     /// The pagination argument is used to limit the amount of returned tables
     /// in this call and to resume listing from a specified point in the
     /// collection of tables.
     async fn list_tables_in_schema(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         cursor: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError>;
+    ) -> Result<Page<Table>, CatalogError>;
 
     /// Return a share with the specified name if it is accessible for the
-    /// given client.
+    /// given recipient.
     async fn get_share(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         share_name: &str,
-    ) -> Result<Share, ShareReaderError>;
+    ) -> Result<Share, CatalogError>;
 
     /// Return a table with the specified name within the specified share and
-    /// schema if it is accessible for the given client.
+    /// schema if it is accessible for the given recipient.
     async fn get_table(
         &self,
-        client_id: &RecipientId,
+        recipient_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError>;
+    ) -> Result<Table, CatalogError>;
 }
 
 /// Pagination parameters for listing shared objects.
@@ -282,16 +282,21 @@ impl<T> Page<T> {
 }
 
 /// Information about a share stored on the sharing server store.
-#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Share {
     id: Option<String>,
     name: String,
+    extensions: Option<HashMap<String, String>>,
 }
 
 impl Share {
     /// Create a new share info with the specified name and id.
     pub fn new(name: String, id: Option<String>) -> Self {
-        Self { name, id }
+        Self {
+            name,
+            id,
+            extensions: None,
+        }
     }
 
     /// Create a new [`ShareBuilder`]
@@ -308,13 +313,24 @@ impl Share {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn extensions(&self) -> Option<&HashMap<String, String>> {
+        self.extensions.as_ref()
+    }
+
+    pub fn get_extension(&self, key: &str) -> Option<&str> {
+        self.extensions
+            .as_ref()
+            .and_then(|ex| ex.get(key).map(|v| v.as_ref()))
+    }
 }
 
 /// A builder for the [`Share`] type
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShareBuilder {
     id: Option<String>,
     name: Option<String>,
+    extensions: Option<HashMap<String, String>>,
 }
 
 impl ShareBuilder {
@@ -323,6 +339,7 @@ impl ShareBuilder {
         Self {
             id: None,
             name: None,
+            extensions: None,
         }
     }
 
@@ -351,9 +368,9 @@ impl ShareBuilder {
     }
 
     /// Build the share
-    pub fn build(self) -> Result<Share, ShareReaderError> {
+    pub fn build(self) -> Result<Share, CatalogError> {
         let Some(share_name) = self.name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `name` was not set",
             ));
         };
@@ -361,6 +378,7 @@ impl ShareBuilder {
         Ok(Share {
             id: self.id,
             name: share_name,
+            extensions: self.extensions,
         })
     }
 }
@@ -477,15 +495,15 @@ impl SchemaBuilder {
     }
 
     /// Build the schema
-    pub fn build(self) -> Result<Schema, ShareReaderError> {
+    pub fn build(self) -> Result<Schema, CatalogError> {
         let Some(schema_name) = self.schema_name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `name` was not set",
             ));
         };
 
         let Some(share_name) = self.share_name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `share_name` was not set",
             ));
         };
@@ -499,7 +517,7 @@ impl SchemaBuilder {
 }
 
 /// Information about a table stored on the sharing server store.
-#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Table {
     id: Option<String>,
     name: String,
@@ -507,6 +525,7 @@ pub struct Table {
     share_name: String,
     schema_name: String,
     storage_location: String,
+    extensions: Option<HashMap<String, String>>,
 }
 
 impl Table {
@@ -524,6 +543,7 @@ impl Table {
             storage_location,
             id: None,
             share_id: None,
+            extensions: None,
         }
     }
 
@@ -666,27 +686,27 @@ impl TableBuilder {
     }
 
     /// Build the table
-    pub fn build(self) -> Result<Table, ShareReaderError> {
+    pub fn build(self) -> Result<Table, CatalogError> {
         let Some(share_name) = self.share_name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `share_name` was not set",
             ));
         };
 
         let Some(schema_name) = self.schema_name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `schema_name` was not set",
             ));
         };
 
         let Some(table_name) = self.table_name else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `table_name` was not set",
             ));
         };
 
         let Some(storage_path) = self.storage_path else {
-            return Err(ShareReaderError::internal(
+            return Err(CatalogError::internal(
                 "the required attribute `storage_path` was not set",
             ));
         };
@@ -698,13 +718,14 @@ impl TableBuilder {
             share_name,
             schema_name,
             storage_location: storage_path,
+            extensions: None,
         })
     }
 }
 
 /// Errors that can occur during the listing and retrieval of shared objects.
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ShareReaderErrorKind {
+pub enum CatalogErrorKind {
     /// The requested share or table was not found.
     ResourceNotFound,
     /// The pagination token is malformed.
@@ -718,14 +739,14 @@ pub enum ShareReaderErrorKind {
 /// This error is used to wrap the specific error that occurred and to provide
 /// a message that can be used to describe the error.
 #[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
-pub struct ShareReaderError {
-    kind: ShareReaderErrorKind,
+pub struct CatalogError {
+    kind: CatalogErrorKind,
     message: String,
 }
 
-impl ShareReaderError {
+impl CatalogError {
     /// Create a new error with the specified kind and message.
-    pub fn new(kind: ShareReaderErrorKind, message: impl Into<String>) -> Self {
+    pub fn new(kind: CatalogErrorKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),
@@ -733,7 +754,7 @@ impl ShareReaderError {
     }
 
     /// Return the kind of the error.
-    pub fn kind(&self) -> ShareReaderErrorKind {
+    pub fn kind(&self) -> CatalogErrorKind {
         self.kind
     }
 
@@ -744,38 +765,38 @@ impl ShareReaderError {
 
     /// Create a new error indicating that the requested share or table was not
     pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(ShareReaderErrorKind::ResourceNotFound, message)
+        Self::new(CatalogErrorKind::ResourceNotFound, message)
     }
 
     /// Create a new error indicating that the pagination token is malformed.
     pub fn malformed_pagination(message: impl Into<String>) -> Self {
-        Self::new(ShareReaderErrorKind::MalformedPagination, message)
+        Self::new(CatalogErrorKind::MalformedPagination, message)
     }
 
     /// Create a new error indicating that the [`ShareReader`] has an internal
     /// error.
     pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(ShareReaderErrorKind::Internal, message)
+        Self::new(CatalogErrorKind::Internal, message)
     }
 }
 
-impl Display for ShareReaderErrorKind {
+impl Display for CatalogErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ShareReaderErrorKind::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
-            ShareReaderErrorKind::MalformedPagination => write!(f, "MALFORMED_PAGINATION"),
-            ShareReaderErrorKind::Internal => write!(f, "INTERNAL_ERROR"),
+            CatalogErrorKind::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
+            CatalogErrorKind::MalformedPagination => write!(f, "MALFORMED_PAGINATION"),
+            CatalogErrorKind::Internal => write!(f, "INTERNAL_ERROR"),
         }
     }
 }
 
-impl Display for ShareReaderError {
+impl Display for CatalogError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}] {}", self.kind, self.message)
     }
 }
 
-impl Error for ShareReaderError {}
+impl Error for CatalogError {}
 
 #[cfg(test)]
 mod test {
@@ -794,7 +815,7 @@ mod test {
 
         let share = Share::builder().id("id").build();
         assert!(share.is_err());
-        assert_eq!(share.unwrap_err().kind(), ShareReaderErrorKind::Internal);
+        assert_eq!(share.unwrap_err().kind(), CatalogErrorKind::Internal);
     }
 
     #[test]
@@ -812,7 +833,7 @@ mod test {
 
         let schema = Schema::builder().id("id").build();
         assert!(schema.is_err());
-        assert_eq!(schema.unwrap_err().kind(), ShareReaderErrorKind::Internal);
+        assert_eq!(schema.unwrap_err().kind(), CatalogErrorKind::Internal);
     }
 
     #[test]
@@ -835,6 +856,6 @@ mod test {
 
         let table = Table::builder().id("id").build();
         assert!(table.is_err());
-        assert_eq!(table.unwrap_err().kind(), ShareReaderErrorKind::Internal);
+        assert_eq!(table.unwrap_err().kind(), CatalogErrorKind::Internal);
     }
 }

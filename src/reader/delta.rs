@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
@@ -72,6 +74,7 @@ impl TableReader for DeltaTableReader {
         version: Version,
         _limit: Option<u64>,
         _predicates: Option<String>,
+        _opt: Option<HashMap<String, String>>,
     ) -> Result<UnsignedTableData, TableReaderError> {
         tracing::info!(
             "get_table_data: storage_path={}, version={:?}",
@@ -108,6 +111,7 @@ impl TableReader for DeltaTableReader {
         &self,
         _storage_path: &str,
         _range: VersionRange,
+        _opt: Option<HashMap<String, String>>,
     ) -> Result<UnsignedTableData, TableReaderError> {
         Err(TableReaderError::Other)
     }

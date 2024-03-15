@@ -1,10 +1,10 @@
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::catalog::{Schema, Share, ShareReaderError, Table};
+use crate::catalog::{CatalogError, Schema, Share, Table};
 
 #[derive(Debug, FromRow)]
-pub struct ClientModel {
+pub struct RecipientModel {
     pub id: Uuid,
     pub name: String,
 }
@@ -22,7 +22,7 @@ pub struct ShareInfoModel {
 }
 
 impl ShareInfoModel {
-    pub fn try_into_share(self) -> Result<Share, ShareReaderError> {
+    pub fn try_into_share(self) -> Result<Share, CatalogError> {
         Share::builder()
             .id(self.id.to_string())
             .name(self.name)
@@ -45,7 +45,7 @@ pub struct SchemaInfoModel {
 }
 
 impl SchemaInfoModel {
-    pub fn try_into_schema(self) -> Result<Schema, ShareReaderError> {
+    pub fn try_into_schema(self) -> Result<Schema, CatalogError> {
         Schema::builder()
             .id(self.id.to_string())
             .name(self.name)
@@ -73,7 +73,7 @@ pub struct TableInfoModel {
 }
 
 impl TableInfoModel {
-    pub fn try_into_table(self) -> Result<Table, ShareReaderError> {
+    pub fn try_into_table(self) -> Result<Table, CatalogError> {
         Table::builder()
             .id(self.id.to_string())
             .share_id(self.share_id.to_string())

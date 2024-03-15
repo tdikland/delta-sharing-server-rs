@@ -3,7 +3,28 @@ use axum::{extract::FromRequestParts, http::request::Parts};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{catalog::Pagination, error::ServerError, reader::Version};
+use crate::{auth::RecipientId, catalog::Pagination, error::ServerError, reader::Version};
+
+#[async_trait]
+impl<S> FromRequestParts<S> for RecipientId
+where
+    S: Send + Sync,
+{
+    type Rejection = ServerError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let recipient_id = parts
+            .extensions
+            .get::<RecipientId>()
+            .ok_or_else(|| {
+                tracing::error!("the `RecepientId` extension was not set");
+                ServerError::unauthorized("the `RecepientId` extension was not set")
+            })
+            .map(|x| x.clone())?;
+
+        Ok(recipient_id)
+    }
+}
 
 #[async_trait]
 impl<S> FromRequestParts<S> for Pagination
@@ -218,6 +239,8 @@ where
 mod tests {
     use std::ops::Deref;
 
+    use crate::error::ServerErrorKind;
+
     use super::*;
     use axum::body::Body;
     use axum::extract::FromRequest;
@@ -226,6 +249,26 @@ mod tests {
     use axum::Json;
     use chrono::TimeZone;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn extract_recipient_id() {
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .extension(RecipientId::known("foo"))
+            .body(Body::empty())
+            .unwrap();
+
+        let recipient_id = RecipientId::from_request(req, &()).await.unwrap();
+        assert_eq!(recipient_id.as_ref(), "foo");
+
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .body(Body::empty())
+            .unwrap();
+
+        let err = RecipientId::from_request(req, &()).await.unwrap_err();
+        assert_eq!(err.kind(), ServerErrorKind::Unauthorized);
+    }
 
     #[tokio::test]
     async fn extract_pagination() {

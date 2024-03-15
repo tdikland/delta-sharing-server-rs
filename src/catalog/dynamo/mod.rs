@@ -2,7 +2,7 @@
 
 use self::{condition::ConditionExt, pagination::PaginationExt};
 
-use super::{Catalog, Page, Pagination, Schema, Share, ShareReaderError, Table};
+use super::{Catalog, CatalogError, Page, Pagination, Schema, Share, Table};
 use crate::{auth::RecipientId, catalog::dynamo::pagination::key_to_token};
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
@@ -285,14 +285,14 @@ impl Catalog for DynamoCatalog {
         &self,
         client_id: &RecipientId,
         pagination: &Pagination,
-    ) -> Result<Page<Share>, ShareReaderError> {
+    ) -> Result<Page<Share>, CatalogError> {
         let output = self.query_share_items(client_id, pagination).await?;
         let shares = output
             .items
             .unwrap_or_default()
             .into_iter()
             .map(|item| model::item_to_share(&item, &self.config))
-            .collect::<Result<Vec<Share>, ShareReaderError>>()?;
+            .collect::<Result<Vec<Share>, CatalogError>>()?;
         let token = output.last_evaluated_key.map(key_to_token);
 
         Ok(Page::new(shares, token))
@@ -303,7 +303,7 @@ impl Catalog for DynamoCatalog {
         client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Schema>, ShareReaderError> {
+    ) -> Result<Page<Schema>, CatalogError> {
         let output = self
             .query_schema_items(client_id, share_name, pagination)
             .await?;
@@ -312,7 +312,7 @@ impl Catalog for DynamoCatalog {
             .unwrap_or_default()
             .into_iter()
             .map(|item| model::item_to_schema(&item, &self.config))
-            .collect::<Result<Vec<Schema>, ShareReaderError>>()?;
+            .collect::<Result<Vec<Schema>, CatalogError>>()?;
         let token = output.last_evaluated_key.map(key_to_token);
 
         Ok(Page::new(schemas, token))
@@ -323,7 +323,7 @@ impl Catalog for DynamoCatalog {
         client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let output = self
             .query_table_items_in_share(client_id, share_name, pagination)
             .await?;
@@ -332,7 +332,7 @@ impl Catalog for DynamoCatalog {
             .unwrap_or_default()
             .into_iter()
             .map(|item| model::item_to_table(&item, &self.config))
-            .collect::<Result<Vec<Table>, ShareReaderError>>()?;
+            .collect::<Result<Vec<Table>, CatalogError>>()?;
         let token = output.last_evaluated_key.map(key_to_token);
 
         Ok(Page::new(schemas, token))
@@ -344,7 +344,7 @@ impl Catalog for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, ShareReaderError> {
+    ) -> Result<Page<Table>, CatalogError> {
         let output = self
             .query_table_items_in_schema(client_id, share_name, schema_name, pagination)
             .await?;
@@ -353,7 +353,7 @@ impl Catalog for DynamoCatalog {
             .unwrap_or_default()
             .into_iter()
             .map(|item| model::item_to_table(&item, &self.config))
-            .collect::<Result<Vec<Table>, ShareReaderError>>()?;
+            .collect::<Result<Vec<Table>, CatalogError>>()?;
         let token = output.last_evaluated_key.map(key_to_token);
 
         Ok(Page::new(schemas, token))
@@ -363,9 +363,9 @@ impl Catalog for DynamoCatalog {
         &self,
         client_id: &RecipientId,
         share_name: &str,
-    ) -> Result<Share, ShareReaderError> {
+    ) -> Result<Share, CatalogError> {
         let output = self.get_share_item(client_id, share_name).await?;
-        let item = output.item.ok_or(ShareReaderError::not_found(format!(
+        let item = output.item.ok_or(CatalogError::not_found(format!(
             "share `{share_name}` was not found."
         )))?;
 
@@ -378,11 +378,11 @@ impl Catalog for DynamoCatalog {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<Table, ShareReaderError> {
+    ) -> Result<Table, CatalogError> {
         let output = self
             .get_table_item(client_id, share_name, schema_name, table_name)
             .await?;
-        let item = output.item.ok_or(ShareReaderError::not_found(format!(
+        let item = output.item.ok_or(CatalogError::not_found(format!(
             "table `{share_name}.{schema_name}.{table_name}` was not found."
         )))?;
 
@@ -390,8 +390,8 @@ impl Catalog for DynamoCatalog {
     }
 }
 
-impl<E> From<SdkError<E>> for ShareReaderError {
+impl<E> From<SdkError<E>> for CatalogError {
     fn from(value: SdkError<E>) -> Self {
-        ShareReaderError::internal(value.to_string())
+        CatalogError::internal(value.to_string())
     }
 }

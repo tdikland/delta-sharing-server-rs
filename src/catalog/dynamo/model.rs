@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use aws_sdk_dynamodb::types::AttributeValue;
 
 use super::config::DynamoCatalogConfig;
-use crate::catalog::{Schema, Share, ShareReaderError, Table};
+use crate::catalog::{CatalogError, Schema, Share, Table};
 
 pub fn build_share_key(
     client_name: &str,
@@ -39,7 +39,7 @@ pub fn build_share_item(
 pub fn item_to_share(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<Share, ShareReaderError> {
+) -> Result<Share, CatalogError> {
     Share::builder()
         .set_name(extract_attr_from_item(item, config.share_name_attr()))
         .build()
@@ -85,7 +85,7 @@ pub fn build_schema_item(
 pub fn item_to_schema(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<Schema, ShareReaderError> {
+) -> Result<Schema, CatalogError> {
     Schema::builder()
         .set_name(extract_attr_from_item(item, config.schema_name_attr()))
         .set_share_name(extract_attr_from_item(item, config.share_name_attr()))
@@ -143,7 +143,7 @@ pub fn build_table_item(
 pub fn item_to_table(
     item: &HashMap<String, AttributeValue>,
     config: &DynamoCatalogConfig,
-) -> Result<Table, ShareReaderError> {
+) -> Result<Table, CatalogError> {
     Table::builder()
         .set_share_name(extract_attr_from_item(item, config.share_name_attr()))
         .set_schema_name(extract_attr_from_item(item, config.schema_name_attr()))

@@ -183,7 +183,7 @@ impl SharingServerState {
 
         let table_data = self
             .reader
-            .get_table_data(table.storage_path(), Version::Latest, None, None)
+            .get_table_data(table.storage_path(), Version::Latest, None, None, None)
             .await?;
 
         dbg!(&table_data);

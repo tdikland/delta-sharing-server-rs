@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::catalog::Pagination;
+use crate::catalog::{CatalogError, Pagination};
 
 /// Cursor for paginating collections of sharable objects.
 #[derive(Debug)]
@@ -45,13 +45,51 @@ impl Default for PostgresCursor {
 }
 
 impl TryFrom<Pagination> for PostgresCursor {
-    type Error = &'static str;
-    fn try_from(cursor: Pagination) -> Result<Self, Self::Error> {
-        let last_seen_id = cursor
+    type Error = CatalogError;
+
+    fn try_from(pagination: Pagination) -> Result<Self, Self::Error> {
+        let last_seen_id = pagination
             .page_token()
-            .map(|token| Uuid::parse_str(token).map_err(|_| "invalid page token"))
+            .map(|token| {
+                Uuid::parse_str(token).map_err(|e| {
+                    tracing::error!(pagination = ?pagination, error = ?e, "the pagination token could not be parsed as UUID");
+                    CatalogError::malformed_pagination(
+                        "the pagination token could not be parsed",
+                    )
+                })
+            })
             .transpose()?;
-        let pg_cursor = PostgresCursor::new(last_seen_id, cursor.max_results());
+        let pg_cursor = PostgresCursor::new(last_seen_id, pagination.max_results());
         Ok(pg_cursor)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::catalog::CatalogErrorKind;
+
+    use super::*;
+
+    #[test]
+    fn parse_page_token_succes() {
+        let pagination = Pagination::new(
+            Some(42),
+            Some(String::from("00000000-0000-0000-0000-000000000001")),
+        );
+
+        let cursor: PostgresCursor = pagination.try_into().unwrap();
+        assert_eq!(cursor.last_seen_id(), Uuid::from_u128(1));
+        assert_eq!(cursor.limit(), 42);
+    }
+
+    #[test]
+    fn parse_page_token_failed() {
+        let pagination = Pagination::new(Some(42), Some(String::from("invalid token")));
+
+        let cursor: Result<PostgresCursor, CatalogError> = pagination.try_into();
+        assert_eq!(
+            cursor.unwrap_err().kind(),
+            CatalogErrorKind::MalformedPagination
+        );
     }
 }

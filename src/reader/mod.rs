@@ -1,12 +1,12 @@
 //! Types and traits for reading table data in object storage.
 
-use std::{error::Error, fmt::Display};
+use std::{collections::HashMap, error::Error, fmt::Display};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-// use self::action::{Add, Cdf, File, Metadata, Protocol, Remove};
+// TODO: refer to the official kernel types
 use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
 
 /// Table reader implementation for the Delta Lake format.
@@ -42,6 +42,7 @@ pub trait TableReader: Send + Sync {
         version: Version,
         limit: Option<u64>,
         predicates: Option<String>,
+        opt: Option<HashMap<String, String>>,
     ) -> Result<UnsignedTableData, TableReaderError>;
 
     /// Retrieve the table change data for a specific range of table versions.
@@ -52,6 +53,7 @@ pub trait TableReader: Send + Sync {
         &self,
         storage_path: &str,
         range: VersionRange,
+        opt: Option<HashMap<String, String>>,
     ) -> Result<UnsignedTableData, TableReaderError>;
 }
 

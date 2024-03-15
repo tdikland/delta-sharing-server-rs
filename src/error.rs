@@ -6,17 +6,18 @@ use axum::{http::header, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
 use crate::{
-    catalog::{ShareReaderError, ShareReaderErrorKind},
+    catalog::{CatalogError, CatalogErrorKind},
     reader::TableReaderError,
 };
 
 pub type SharingServerResult<T> = core::result::Result<T, ServerError>;
 pub type Result<T> = core::result::Result<T, ServerError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ServerErrorKind {
-    InvalidQueryParameters,
+    InvalidParameters,
     Unauthorized,
+    Forbidden,
     ResourceNotFound,
     Internal,
     UnsupportedOperation,
@@ -25,8 +26,9 @@ pub enum ServerErrorKind {
 impl Display for ServerErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidParameters => write!(f, "INVALID_PARAMETERS"),
             Self::Unauthorized => write!(f, "UNAUTHORIZED"),
-            Self::InvalidQueryParameters => write!(f, "INVALID_QUERY_PARAMETERS"),
+            Self::Forbidden => write!(f, "FORBIDDEN"),
             Self::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
             Self::Internal => write!(f, "INTERNAL"),
             Self::UnsupportedOperation => write!(f, "UNSUPPORTED_OPERATION"),
@@ -45,8 +47,8 @@ impl ServerError {
         Self { kind, message }
     }
 
-    pub fn kind(&self) -> &ServerErrorKind {
-        &self.kind
+    pub fn kind(&self) -> ServerErrorKind {
+        self.kind
     }
 
     pub fn message(&self) -> &str {
@@ -54,11 +56,15 @@ impl ServerError {
     }
 
     pub fn invalid_query_params(message: impl Into<String>) -> Self {
-        Self::new(ServerErrorKind::InvalidQueryParameters, message.into())
+        Self::new(ServerErrorKind::InvalidParameters, message.into())
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(ServerErrorKind::Unauthorized, message.into())
+    }
+
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::Forbidden, message.into())
     }
 
     pub fn not_found(message: impl Into<String>) -> Self {
@@ -89,14 +95,14 @@ impl Display for ServerError {
 
 impl std::error::Error for ServerError {}
 
-impl From<ShareReaderError> for ServerError {
-    fn from(err: ShareReaderError) -> Self {
+impl From<CatalogError> for ServerError {
+    fn from(err: CatalogError) -> Self {
         match err.kind() {
-            ShareReaderErrorKind::ResourceNotFound => ServerError::not_found(err.message()),
-            ShareReaderErrorKind::MalformedPagination => {
+            CatalogErrorKind::ResourceNotFound => ServerError::not_found(err.message()),
+            CatalogErrorKind::MalformedPagination => {
                 ServerError::invalid_query_params(err.message())
             }
-            ShareReaderErrorKind::Internal => ServerError::internal(err.message()),
+            CatalogErrorKind::Internal => ServerError::internal(err.message()),
         }
     }
 }
@@ -118,8 +124,9 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
         tracing::error!(error = %self, details=?self, "Returning error response");
         let status_code = match self.kind() {
-            ServerErrorKind::InvalidQueryParameters => StatusCode::BAD_REQUEST,
+            ServerErrorKind::InvalidParameters => StatusCode::BAD_REQUEST,
             ServerErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+            ServerErrorKind::Forbidden => StatusCode::FORBIDDEN,
             ServerErrorKind::ResourceNotFound => StatusCode::NOT_FOUND,
             ServerErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             ServerErrorKind::UnsupportedOperation => StatusCode::NOT_IMPLEMENTED,
