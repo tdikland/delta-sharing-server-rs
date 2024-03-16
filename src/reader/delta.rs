@@ -17,6 +17,7 @@ pub struct DeltaTableReader;
 impl DeltaTableReader {
     /// Create a new instance of the Delta Lake TableReader.
     pub fn new() -> Self {
+        deltalake::aws::register_handlers(None);
         Self {}
     }
 }
@@ -56,6 +57,7 @@ impl TableReader for DeltaTableReader {
         &self,
         storage_path: &str,
     ) -> Result<TableMetadata, TableReaderError> {
+        tracing::info!(path = ?storage_path, "get table metadata");
         let delta_table = deltalake::open_table(storage_path).await?;
 
         let protocol = delta_table.protocol()?.clone();
@@ -95,7 +97,8 @@ impl TableReader for DeltaTableReader {
         let metadata = delta_table.metadata()?.clone();
 
         let mut table_files = vec![];
-        for file in delta_table.state.as_ref().unwrap().file_actions()? {
+        for mut file in delta_table.state.as_ref().unwrap().file_actions()? {
+            file.path = format!("{}/{}", storage_path, file.path);
             table_files.push(UnsignedDataFile::File(file));
         }
 
@@ -119,6 +122,7 @@ impl TableReader for DeltaTableReader {
 
 impl From<DeltaTableError> for TableReaderError {
     fn from(_value: DeltaTableError) -> Self {
+        tracing::error!("DeltaTableError: {}\n{:?}", _value, _value);
         // TODO: meaningful error handling
         TableReaderError::Other
     }

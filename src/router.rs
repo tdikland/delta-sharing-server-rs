@@ -58,6 +58,7 @@ async fn list_shares(
     client_id: Extension<RecipientId>,
     pagination: Pagination,
 ) -> Result<ListSharesResponse> {
+    tracing::info!("listing shares");
     let share_info_page = state.list_shares(&client_id, &pagination).await?;
     Ok(ListSharesResponse::from(share_info_page))
 }
@@ -69,6 +70,7 @@ async fn list_schemas(
     share_name: Path<String>,
     pagination: Pagination,
 ) -> Result<ListSchemasResponse> {
+    tracing::info!("listing schemas");
     let schema_info_page = state
         .list_schemas(&client_id, &share_name, &pagination)
         .await?;

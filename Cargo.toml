@@ -22,7 +22,7 @@ axum = { version = "0.7", features = ["macros"] }
 base64 = "0.22"
 bytes = "1.4.0"
 chrono = { version = "0.4.24", features = ["serde"] }
-deltalake = { version = "0.17.1", features = ["s3"] }
+deltalake = { version = "0.17.1", features = ["s3", "deltalake-aws"] }
 serde = { version = "1.0.162", features = ["derive"] }
 serde_json = "1.0.96"
 serde_urlencoded = "0.7.1"
@@ -44,12 +44,14 @@ tokio-stream = { version = "0.1.14", features = ["full"] }
 tokio-util = { version = "0.7.8", features = ["full"] }
 futures = "0.3.28"
 tower = "0.4.13"
+toml = "0.8"
 testcontainers = "0.15.0"
 testcontainers-modules = { version = "0.3.4", features = [
     "dynamodb",
     "postgres",
 ] }
 http = "1"
+md5 = "0.7.0"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.17"

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use aws_sdk_s3::{presigning::PresigningConfig, Client};
 use axum::http::Uri;
 
-use super::UrlSigner;
+use super::{SignedUrl, UrlSigner};
 
 /// Signing configuration for the S3 object store.
 pub struct S3UrlSigner {
@@ -22,7 +22,7 @@ impl S3UrlSigner {
 
 #[async_trait]
 impl UrlSigner for S3UrlSigner {
-    async fn sign_url(&self, path: &str) -> String {
+    async fn sign_url(&self, path: &str) -> SignedUrl {
         let uri = Uri::try_from(path).unwrap();
         let bucket = uri.host().unwrap();
         let key = &uri.path()[1..];
@@ -34,10 +34,14 @@ impl UrlSigner for S3UrlSigner {
             .get_object()
             .bucket(bucket)
             .key(key)
-            .presigned(presign_config)
+            .presigned(presign_config.clone())
             .await
             .unwrap();
 
-        req.uri().to_string()
+        SignedUrl::new(
+            req.uri().to_string(),
+            presign_config.start_time().into(),
+            presign_config.expires(),
+        )
     }
 }

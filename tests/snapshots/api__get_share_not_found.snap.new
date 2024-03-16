@@ -1,6 +1,0 @@
----
-source: tests/api.rs
-assertion_line: 112
-expression: response_text
----
-{"errorCode":"RESOURCE_NOT_FOUND","message":"share `not-existing-share` does not exist or is not accessible"}

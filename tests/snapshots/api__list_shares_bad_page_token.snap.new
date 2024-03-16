@@ -1,6 +1,0 @@
----
-source: tests/api.rs
-assertion_line: 76
-expression: response_text
----
-{"errorCode":"INVALID_QUERY_PARAMETERS","message":"invalid page token"}

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-// TODO: refer to the official kernel types
+// TODO: refer to the official kernel types (not yet available)
 use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
 
 /// Table reader implementation for the Delta Lake format.

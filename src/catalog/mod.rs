@@ -1,18 +1,18 @@
-//! Types and traits for managing shared objects.
+//! Types and traits for managing shared assets.
 //!
 //! Every Delta Sharing server needs to know which shares, schemas and tables
-//! are available to be shared with the client. The server also needs to know
-//! where the specific tables are stored. This module provides the traits and
+//! are available to be shared with the recipient. The server also needs to know
+//! where the specific assets are stored. This module provides the traits and
 //! types that are used by the sharing server to list and get information about
-//! the shared objects.
+//! the shared assets.
 //!
 //! The [`Catalog`] trait is implemented by the different share managers
-//! that each may represent a different backing store for the shared objects.
+//! that each may represent a different backing store for the shared assets.
 //! The [`Catalog`] trait provides methods to list shares, schemas and
 //! tables and to get details about a specific share or table. The
-//! [`RecipientId`]` type is used to identify the client that is requesting the
-//! shared objects. Based on the passed [`RecipientId`] the share manager can
-//! decide which shares, schemas and tables are available to the client.
+//! [`RecipientId`] type is used to identify the recipient that is querying the
+//! shared assets. Based on the passed [`RecipientId`] the share manager can
+//! decide which shares, schemas and tables are available to the recipient.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -24,12 +24,12 @@ pub mod dynamo;
 pub mod file;
 pub mod postgres;
 
-/// Trait for listing and reading shared objects in the Delta Sharing server.
+/// Interface for listing and reading shared assets in the Delta Sharing server.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait Catalog: Send + Sync {
     /// Return a page of shares stored on the sharing server store accessible
-    /// for the given recipient. The pagination argument is used to limit the
+    /// to the given recipient. The pagination argument is used to limit the
     /// amount of returned shares in this call and to resume listing from a
     /// specified point in the collection of shares.
     async fn list_shares(
@@ -39,7 +39,7 @@ pub trait Catalog: Send + Sync {
     ) -> Result<Page<Share>, CatalogError>;
 
     /// Return a page of schemas stored on the sharing server store that belong
-    /// to the specified share if accessible for the given recipient. The
+    /// to the specified share if accessible to the given recipient. The
     /// pagination argument is used to limit the amount of returned schemas in
     /// this call and to resume listing from a specified point in the
     /// collection of schemas.
@@ -47,11 +47,11 @@ pub trait Catalog: Send + Sync {
         &self,
         recipient_id: &RecipientId,
         share_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<Schema>, CatalogError>;
 
     /// Return a page of tables stored on the sharing server store that belong
-    /// to the specified share if accessible for the given recipient. The
+    /// to the specified share if accessible to the given recipient. The
     /// pagination argument is used to limit the amount of returned tables in
     /// this call and to resume listing from a specified point in the
     /// collection of tables.
@@ -59,11 +59,11 @@ pub trait Catalog: Send + Sync {
         &self,
         recipient_id: &RecipientId,
         share_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<Table>, CatalogError>;
 
     /// Return a page of tables stored on the sharing server store that belong
-    /// to the specified share+schema and are accessible for the given recipient.
+    /// to the specified share+schema and are accessible to the given recipient.
     /// The pagination argument is used to limit the amount of returned tables
     /// in this call and to resume listing from a specified point in the
     /// collection of tables.
@@ -72,10 +72,10 @@ pub trait Catalog: Send + Sync {
         recipient_id: &RecipientId,
         share_name: &str,
         schema_name: &str,
-        cursor: &Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<Table>, CatalogError>;
 
-    /// Return a share with the specified name if it is accessible for the
+    /// Return a share with the specified name if it is accessible to the
     /// given recipient.
     async fn get_share(
         &self,
@@ -84,7 +84,7 @@ pub trait Catalog: Send + Sync {
     ) -> Result<Share, CatalogError>;
 
     /// Return a table with the specified name within the specified share and
-    /// schema if it is accessible for the given recipient.
+    /// schema if it is accessible to the given recipient.
     async fn get_table(
         &self,
         recipient_id: &RecipientId,
@@ -94,7 +94,7 @@ pub trait Catalog: Send + Sync {
     ) -> Result<Table, CatalogError>;
 }
 
-/// Pagination parameters for listing shared objects.
+/// Pagination parameters for listing shared assets.
 #[derive(Debug, Clone, Default, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {
@@ -103,12 +103,12 @@ pub struct Pagination {
 }
 
 impl Pagination {
-    /// Create a new pagination object with the specified maximum results and
-    /// page token.
+    /// Create a new pagination struct with the specified maximum results
+    /// per page and continuation token.
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::Pagination;
+    /// use delta_sharing_server::catalog::Pagination;
     ///
     /// let pagination = Pagination::new(Some(43), Some("foo".to_string()));
     /// assert_eq!(pagination.max_results(), Some(43));
@@ -125,7 +125,7 @@ impl Pagination {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::Pagination;
+    /// use delta_sharing_server::catalog::Pagination;
     ///
     /// let pagination = Pagination::new(Some(43), None);
     /// assert_eq!(pagination.max_results(), Some(43));
@@ -135,11 +135,11 @@ impl Pagination {
     }
 
     /// Return the token that can be used to resume listing from the specified
-    /// point in the collection of shared objects.
+    /// point in the collection of shared assets.
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::Pagination;
+    /// use delta_sharing_server::catalog::Pagination;
     ///
     /// let pagination = Pagination::new(None, Some("foo".to_string()));
     /// assert_eq!(pagination.page_token(), Some("foo"));
@@ -149,7 +149,7 @@ impl Pagination {
     }
 }
 
-/// A page of shared objects returned from the [`ShareReader`].
+/// A page of shared assets returned from the [`Catalog`].
 #[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Page<T> {
     items: Vec<T>,
@@ -161,7 +161,7 @@ impl<T> Page<T> {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let shares = vec![
     ///     Share::new("foo".to_string(), None),
@@ -178,11 +178,11 @@ impl<T> Page<T> {
         }
     }
 
-    /// Return the shared objects in the page.
+    /// Return the shared assets in the page.
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let shares = vec![
     ///     Share::new("foo".to_string(), None),
@@ -196,11 +196,11 @@ impl<T> Page<T> {
     }
 
     /// Return the token that can be used to resume listing from a specified
-    /// point in the collection of shared objects.
+    /// point in the collection of shared assets.
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let shares = vec![
     ///     Share::new("foo".to_string(), None),
@@ -213,11 +213,11 @@ impl<T> Page<T> {
         self.next_page_token.as_deref()
     }
 
-    /// Return the amount of shared objects in the page.
+    /// Return the amount of shared assets in the page.
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let shares = vec![
     ///     Share::new("foo".to_string(), None),
@@ -234,7 +234,7 @@ impl<T> Page<T> {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let page = Page::<Share>::new(vec![], None);
     /// assert!(page.is_empty());
@@ -249,7 +249,7 @@ impl<T> Page<T> {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let page = Page::new(vec![Share::new("foo".to_string(), None)], None);
     /// assert!(page.is_last_page());
@@ -262,7 +262,7 @@ impl<T> Page<T> {
     ///
     /// # Example
     /// ```rust
-    /// use delta_sharing_server::share_reader::{Page, Share};
+    /// use delta_sharing_server::catalog::{Page, Share};
     ///
     /// let shares = vec![
     ///     Share::new("foo".to_string(), None),
@@ -290,15 +290,6 @@ pub struct Share {
 }
 
 impl Share {
-    /// Create a new share info with the specified name and id.
-    pub fn new(name: String, id: Option<String>) -> Self {
-        Self {
-            name,
-            id,
-            extensions: None,
-        }
-    }
-
     /// Create a new [`ShareBuilder`]
     pub fn builder() -> ShareBuilder {
         ShareBuilder::new()
@@ -314,10 +305,12 @@ impl Share {
         &self.name
     }
 
+    /// Return the extensions of the share.
     pub fn extensions(&self) -> Option<&HashMap<String, String>> {
         self.extensions.as_ref()
     }
 
+    /// Return the value of an extension of the share.
     pub fn get_extension(&self, key: &str) -> Option<&str> {
         self.extensions
             .as_ref()
@@ -392,27 +385,9 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Create a new schema info with the specified name and share name.
-    pub fn new(name: String, share_name: String) -> Self {
-        Self {
-            id: None,
-            name,
-            share_name,
-        }
-    }
-
     /// Create a new [`SchemaBuilder`]
     pub fn builder() -> SchemaBuilder {
         SchemaBuilder::new()
-    }
-
-    /// Create a new schema info with the specified id, name and share name.
-    pub fn new_with_id(id: String, name: String, share_name: String) -> Self {
-        Self {
-            id: Some(id),
-            name,
-            share_name,
-        }
     }
 
     /// Return the id of the schema.
@@ -529,24 +504,6 @@ pub struct Table {
 }
 
 impl Table {
-    /// Create a new table info with the specified name, schema name, share name
-    pub fn new(
-        name: String,
-        schema_name: String,
-        share_name: String,
-        storage_location: String,
-    ) -> Self {
-        Self {
-            name,
-            schema_name,
-            share_name,
-            storage_location,
-            id: None,
-            share_id: None,
-            extensions: None,
-        }
-    }
-
     /// Create a new [`TableBuilder`]
     pub fn builder() -> TableBuilder {
         TableBuilder::new()
@@ -723,18 +680,18 @@ impl TableBuilder {
     }
 }
 
-/// Errors that can occur during the listing and retrieval of shared objects.
+/// Errors that can occur during the listing and retrieval of shared assets.
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub enum CatalogErrorKind {
     /// The requested share or table was not found.
     ResourceNotFound,
     /// The pagination token is malformed.
     MalformedPagination,
-    /// The [`ShareReader`] has an internal error.
+    /// The [`Catalog`] has an internal error.
     Internal,
 }
 
-/// Error that occurred during the listing and retrieval of shared objects.
+/// Error that occurred during the listing and retrieval of shared assets.
 ///
 /// This error is used to wrap the specific error that occurred and to provide
 /// a message that can be used to describe the error.
@@ -773,7 +730,7 @@ impl CatalogError {
         Self::new(CatalogErrorKind::MalformedPagination, message)
     }
 
-    /// Create a new error indicating that the [`ShareReader`] has an internal
+    /// Create a new error indicating that the [`Catalog`] has an internal
     /// error.
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(CatalogErrorKind::Internal, message)

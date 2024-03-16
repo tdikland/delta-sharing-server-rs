@@ -188,7 +188,7 @@ impl SharingServerState {
 
         dbg!(&table_data);
 
-        let signer = self.signers.get_or_noop(table.storage_path());
+        let signer = self.signers.get_or_noop("s3");
         let signed_table_data = signer.sign_table_data(table_data).await;
 
         dbg!(&signed_table_data);
@@ -199,45 +199,50 @@ impl SharingServerState {
 
 #[cfg(test)]
 mod test {
-    // use super::*;
-    // use crate::{catalog::Catalog, reader::MockTableReader};
-    // use insta::assert_json_snapshot;
+    use super::*;
+    use crate::{
+        catalog::{Catalog, MockCatalog},
+        reader::MockTableReader,
+    };
+    use insta::assert_json_snapshot;
+    use mockall::predicate::eq;
 
-    // #[tokio::test]
-    // async fn list_shares() {
-    //     let mut mock_table_manager = MockCatalog::new();
-    //     mock_table_manager
-    //         .expect_list_shares()
-    //         .once()
-    //         .returning(|_, _| {
-    //             let shares = Page::new(
-    //                 vec![
-    //                     Share::new(
-    //                         "vaccine_share".to_owned(),
-    //                         Some("edacc4a7-6600-4fbb-85f3-a62a5ce6761f".to_owned()),
-    //                     ),
-    //                     Share::new(
-    //                         "sales_share".to_owned(),
-    //                         Some("3e979c79-6399-4dac-bcf8-54e268f48515".to_owned()),
-    //                     ),
-    //                 ],
-    //                 Some("continuation_token".to_owned()),
-    //             );
-    //             Ok(shares)
-    //         });
-    //     let mock_reader = MockTableReader::new();
+    #[tokio::test]
+    async fn list_shares() {
+        let mut mock_catalog = MockCatalog::new();
+        mock_catalog
+            .expect_list_shares()
+            .with(eq(&RecipientId::Anonymous), eq(Pagination::new(None, None)))
+            .once()
+            .return_const(Ok(Page::new(
+                vec![
+                    Share::builder()
+                        .name("vaccine_share")
+                        .id("edacc4a7-6600-4fbb-85f3-a62a5ce6761f")
+                        .build()
+                        .unwrap(),
+                    Share::builder()
+                        .name("sales_share")
+                        .id("3e979c79-6399-4dac-bcf8-54e268f48515")
+                        .build()
+                        .unwrap(),
+                ],
+                Some("continuation_token".to_owned()),
+            )));
+        let mock_reader = MockTableReader::new();
 
-    //     let state = SharingServerState::new(
-    //         Arc::new(mock_table_manager),
-    //         Arc::new(mock_reader),
-    //         SignerRegistry::new(),
-    //     );
-    //     let response = state
-    //         .list_shares(&RecipientId::Anonymous, &Pagination::default())
-    //         .await
-    //         .unwrap();
-    //     assert_json_snapshot!(response);
-    // }
+        let state = SharingServerState::new(
+            Arc::new(mock_catalog),
+            Arc::new(mock_reader),
+            SignerRegistry::new(),
+        );
+        let response = state
+            .list_shares(&RecipientId::Anonymous, &Pagination::default())
+            .await
+            .unwrap();
+
+        assert_json_snapshot!(response);
+    }
 
     // #[tokio::test]
     // async fn list_shares_with_pagination() {

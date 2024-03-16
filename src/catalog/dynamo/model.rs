@@ -195,7 +195,7 @@ mod test {
 
         let share = item_to_share(&item, &config).unwrap();
 
-        assert_eq!(share, Share::new("foo".to_owned(), None));
+        assert_eq!(share.name(), "foo");
     }
 
     #[test]
@@ -237,7 +237,9 @@ mod test {
         .collect::<HashMap<_, _>>();
 
         let schema = item_to_schema(&item, &config).unwrap();
-        assert_eq!(schema, Schema::new("bar".to_owned(), "foo".to_owned()));
+        assert_eq!(schema.name(), "bar");
+        assert_eq!(schema.share_name(), "foo");
+        assert_eq!(schema.id(), None);
     }
 
     #[test]
@@ -285,16 +287,11 @@ mod test {
         .map(|(attr, val)| (attr.to_owned(), AttributeValue::S(val.to_owned())))
         .collect::<HashMap<_, _>>();
 
-        let schema = item_to_table(&item, &config).unwrap();
-        assert_eq!(
-            schema,
-            Table::new(
-                "baz".to_owned(),
-                "bar".to_owned(),
-                "foo".to_owned(),
-                "s3://bucket/prefix".to_owned()
-            )
-        );
+        let table = item_to_table(&item, &config).unwrap();
+        assert_eq!(table.name(), "baz");
+        assert_eq!(table.share_name(), "foo");
+        assert_eq!(table.schema_name(), "bar");
+        assert_eq!(table.storage_path(), "s3://bucket/prefix");
     }
 
     #[test]

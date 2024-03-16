@@ -1,6 +1,9 @@
 //! Traits and types for creating pre-signed urls.
 
+use std::time::Duration;
+
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::reader::UnsignedDataFile;
@@ -19,25 +22,25 @@ pub mod s3;
 #[async_trait]
 pub trait UrlSigner: Send + Sync {
     /// Create a presigned url from a object store path.
-    async fn sign_url(&self, path: &str) -> String;
+    async fn sign_url(&self, path: &str) -> SignedUrl;
 
     /// Create a presigned url for a object store path within a data file.
     async fn sign_data_file(&self, data_file: crate::reader::UnsignedDataFile) -> SignedDataFile {
         match data_file {
             UnsignedDataFile::File(mut file) => {
-                file.path = self.sign_url(&file.path).await;
+                file.path = self.sign_url(&file.path).await.url;
                 SignedDataFile::File(file)
             }
             UnsignedDataFile::Add(mut add) => {
-                add.path = self.sign_url(&add.path).await;
+                add.path = self.sign_url(&add.path).await.url;
                 SignedDataFile::Add(add)
             }
             UnsignedDataFile::Cdf(mut cdf) => {
-                cdf.path = self.sign_url(&cdf.path).await;
+                cdf.path = self.sign_url(&cdf.path).await.url;
                 SignedDataFile::Cdf(cdf)
             }
             UnsignedDataFile::Remove(mut remove) => {
-                remove.path = self.sign_url(&remove.path).await;
+                remove.path = self.sign_url(&remove.path).await.url;
                 SignedDataFile::Remove(remove)
             }
         }
@@ -58,6 +61,33 @@ pub trait UrlSigner: Send + Sync {
             metadata: table_data.metadata,
             data: signed_data_files,
         }
+    }
+}
+
+/// A presigned url with a validity period.
+pub struct SignedUrl {
+    url: String,
+    valid_from: DateTime<Utc>,
+    valid_duration: Duration,
+}
+
+impl SignedUrl {
+    fn new(url: String, valid_from: DateTime<Utc>, valid_duration: Duration) -> Self {
+        Self {
+            url,
+            valid_from,
+            valid_duration,
+        }
+    }
+
+    /// Get the presigned url.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Get the time the presigned url expires.
+    pub fn expires_at(&self) -> DateTime<Utc> {
+        self.valid_from + self.valid_duration
     }
 }
 

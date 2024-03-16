@@ -1,4 +1,4 @@
-//! DynamoDB based implementation of the Catalog trait
+//! Catalog implementation based on AWS DynamoDB.
 
 use self::{condition::ConditionExt, pagination::PaginationExt};
 

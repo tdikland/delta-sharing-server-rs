@@ -1,4 +1,4 @@
-//! Catalog implementation leveraging Postgres as backing store.
+//! Catalog implementation based on PostgreSQL.
 
 use async_trait::async_trait;
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -17,7 +17,7 @@ use self::{
 use super::{Catalog, CatalogError, Page, Pagination, Schema, Share, Table};
 
 mod model;
-mod pagination;
+pub mod pagination;
 /// Catalog implementation backed by a Postgres database.
 #[derive(Debug, Clone)]
 pub struct PostgresCatalog {
@@ -52,16 +52,19 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     ///
     /// let client = catalog.insert_client(&client_id).await.unwrap();
     /// assert_eq!(client.name, "foo");
     /// # Ok::<(), Box<dyn std::error::Error>> };
     /// # Ok(()) }
-    pub async fn insert_recipient(&self, recipient_name: &str) -> Result<RecipientModel, sqlx::Error> {
+    pub async fn insert_recipient(
+        &self,
+        recipient_name: &str,
+    ) -> Result<RecipientModel, sqlx::Error> {
         let client = sqlx::query_as("INSERT INTO client (name) VALUES ($1) RETURNING *;")
             .bind(recipient_name)
             .fetch_one(&self.pool)
@@ -82,10 +85,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # let res = async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     ///
     /// let client = catalog.select_client_by_name(&client_id).await.unwrap();
     /// assert_eq!(client.unwrap().name, "foo");
@@ -122,10 +125,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     ///
     /// let client = catalog.select_client_by_name(&client_id).await.unwrap();
     /// let result = catalog.delete_client(&client.unwrap().id).await;
@@ -180,10 +183,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client = ClientId::known("foo");
+    /// let client = RecipientId::known("foo");
     ///
     /// let share = catalog.select_share_by_name(&client, "foo").await.unwrap();
     /// assert!(share.is_some());
@@ -232,10 +235,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::{PostgresCatalog, PostgresCursor};
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client = ClientId::known("foo");
+    /// let client = RecipientId::known("foo");
     ///
     /// let shares = catalog.select_shares(&client, &PostgresCursor::default()).await.unwrap();
     /// assert_eq!(shares.len(), 1);
@@ -281,10 +284,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     ///
     /// let share = catalog.select_share_by_name(&client_id, "bar").await.unwrap().unwrap();
     /// let result = catalog.delete_share(&share.id).await;
@@ -311,10 +314,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     /// let client = catalog.insert_client(&client_id).await.unwrap();
     /// let share = catalog.insert_share("bar").await.unwrap();
     ///
@@ -350,10 +353,10 @@ impl PostgresCatalog {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # async {
     /// use delta_sharing_server::catalog::postgres::PostgresCatalog;
-    /// use delta_sharing_server::auth::ClientId;
+    /// use delta_sharing_server::auth::RecipientId;
     ///
     /// let catalog = PostgresCatalog::new("postgres://postgres:password@localhost:5432").await;
-    /// let client_id = ClientId::known("foo");
+    /// let client_id = RecipientId::known("foo");
     /// let client = catalog.select_client_by_name(&client_id).await.unwrap().unwrap();
     /// let share = catalog.select_share_by_name(&client_id, "bar").await.unwrap().unwrap();
     ///
