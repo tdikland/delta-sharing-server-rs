@@ -1,0 +1,10 @@
+---
+source: src/state.rs
+assertion_line: 267
+expression: response
+---
+{
+  "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+  "name": "vaccine_share",
+  "extensions": null
+}

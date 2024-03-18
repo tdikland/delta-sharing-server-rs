@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Extension, Router,
 };
+use tracing::{info_span, Instrument};
 
 use crate::extract::Capabilities;
 use crate::{
@@ -58,9 +59,11 @@ async fn list_shares(
     client_id: Extension<RecipientId>,
     pagination: Pagination,
 ) -> Result<ListSharesResponse> {
-    tracing::info!("listing shares");
-    let share_info_page = state.list_shares(&client_id, &pagination).await?;
-    Ok(ListSharesResponse::from(share_info_page))
+    let span = info_span!("list_shares", ?client_id, ?pagination);
+    state
+        .list_shares(&client_id, &pagination)
+        .instrument(span)
+        .await
 }
 
 #[debug_handler]
@@ -134,7 +137,15 @@ async fn get_table_metadata(
     capabilities: Capabilities,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> Result<TableActionsResponse> {
-    let table_metadata = state
+    let span = info_span!(
+        "get_table_metadata",
+        ?client_id,
+        ?capabilities,
+        ?share_name,
+        ?schema_name,
+        ?table_name
+    );
+    state
         .get_table_metadata(
             &client_id,
             &share_name,
@@ -142,22 +153,8 @@ async fn get_table_metadata(
             &table_name,
             &capabilities,
         )
-        .await?;
-
-    // TODO: find out consequences of the delta-capability-header
-    // e.g. check the protocol to see what reader features are required and checking against the header
-    // if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version > 1 {
-    //     if capabilities.has_reader_feature("deletionvectors") {
-    //         return Err(ServerError::unsupported_operation(
-    //             "The required deletion vectors feature is not implemented.",
-    //         ));
-    //     }
-    //     return Ok(TableActionsResponse::new_delta(table_metadata));
-    // }
-
-    // Ok(TableActionsResponse::new_parquet(table_metadata))
-
-    todo!()
+        .instrument(span)
+        .await
 }
 
 #[debug_handler]

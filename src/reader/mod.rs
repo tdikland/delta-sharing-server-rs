@@ -9,8 +9,10 @@ use serde::Serialize;
 use delta_kernel::actions::{Add, Metadata, Protocol};
 
 /// Table reader implementation for the Delta Lake format.
-// pub mod delta;
+pub mod delta;
 pub mod simple;
+
+pub use simple::DeltaKernelReader;
 
 /// Trait for reading a specific table format from cloud storage.
 #[cfg_attr(test, mockall::automock)]

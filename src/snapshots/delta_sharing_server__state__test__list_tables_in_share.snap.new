@@ -1,0 +1,19 @@
+---
+source: src/state.rs
+assertion_line: 354
+expression: response
+---
+{
+  "items": [
+    {
+      "id": "dcb1e680-7da4-4041-9be8-88aff508d001",
+      "name": "vaccine_ingredients",
+      "share_id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "share_name": "vaccine_share",
+      "schema_name": "acme_vaccine_data",
+      "storage_location": "s3://bucket/prefix/key",
+      "extensions": null
+    }
+  ],
+  "next_page_token": "continuation_token"
+}

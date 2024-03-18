@@ -55,9 +55,11 @@ impl TableReader for DeltaTableReader {
 
         Ok(TableMeta {
             version: delta_table.version() as u64,
-            protocol: TableProtocol { inner: protocol },
+            protocol: TableProtocol {
+                inner: core_to_kernel_p(protocol),
+            },
             metadata: TableMetadata {
-                inner: metadata,
+                inner: core_to_kernel_m(metadata),
                 num_files: None,
                 size: None,
             },
@@ -92,10 +94,9 @@ impl TableReader for DeltaTableReader {
 
         let mut table_files = vec![];
         for mut file in delta_table.state.as_ref().unwrap().file_actions()? {
-            file.path = format!("{}/{}", storage_path, file.path);
             table_files.push(
                 TableFile {
-                    data: file,
+                    inner: core_to_kernel_add(file),
                     size: None,
                 }
                 .into(),
@@ -104,9 +105,11 @@ impl TableReader for DeltaTableReader {
 
         Ok(TableData {
             version: delta_table.version() as u64,
-            protocol: TableProtocol { protocol },
+            protocol: TableProtocol {
+                inner: core_to_kernel_p(protocol),
+            },
             metadata: TableMetadata {
-                metadata,
+                inner: core_to_kernel_m(metadata),
                 num_files: None,
                 size: None,
             },
@@ -129,5 +132,70 @@ impl From<DeltaTableError> for TableReaderError {
         tracing::error!("DeltaTableError: {}\n{:?}", _value, _value);
         // TODO: meaningful error handling
         TableReaderError::Other
+    }
+}
+
+fn core_to_kernel_p(p: deltalake::kernel::Protocol) -> delta_kernel::actions::Protocol {
+    delta_kernel::actions::Protocol {
+        min_reader_version: p.min_reader_version,
+        min_writer_version: p.min_writer_version,
+        reader_features: p
+            .reader_features
+            .map(|s| s.into_iter().map(|f| f.to_string()).collect()),
+        writer_features: p
+            .writer_features
+            .map(|s| s.into_iter().map(|f| f.to_string()).collect()),
+    }
+}
+
+fn core_to_kernel_fmt(fmt: deltalake::kernel::Format) -> delta_kernel::actions::Format {
+    delta_kernel::actions::Format {
+        provider: fmt.provider,
+        options: fmt
+            .options
+            .into_iter()
+            .map(|(k, v)| (k, v.unwrap_or_default()))
+            .collect(),
+    }
+}
+
+fn core_to_kernel_m(m: deltalake::kernel::Metadata) -> delta_kernel::actions::Metadata {
+    delta_kernel::actions::Metadata {
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        format: core_to_kernel_fmt(m.format),
+        schema_string: m.schema_string,
+        partition_columns: m.partition_columns,
+        configuration: m.configuration,
+        created_time: m.created_time,
+    }
+}
+
+fn core_to_kernel_dv(
+    dv: deltalake::kernel::DeletionVectorDescriptor,
+) -> delta_kernel::actions::DeletionVectorDescriptor {
+    delta_kernel::actions::DeletionVectorDescriptor {
+        storage_type: dv.storage_type.to_string(),
+        path_or_inline_dv: dv.path_or_inline_dv,
+        offset: dv.offset,
+        size_in_bytes: dv.size_in_bytes,
+        cardinality: dv.cardinality,
+    }
+}
+
+fn core_to_kernel_add(add: deltalake::kernel::Add) -> delta_kernel::actions::Add {
+    delta_kernel::actions::Add {
+        path: add.path,
+        size: add.size,
+        partition_values: add.partition_values,
+        modification_time: add.modification_time,
+        data_change: add.data_change,
+        stats: add.stats,
+        tags: add.tags.unwrap_or_default(),
+        deletion_vector: (add.deletion_vector).map(core_to_kernel_dv),
+        base_row_id: add.base_row_id,
+        default_row_commit_version: add.default_row_commit_version,
+        clustering_provider: add.clustering_provider,
     }
 }

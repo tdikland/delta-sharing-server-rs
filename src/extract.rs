@@ -65,19 +65,25 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+pub enum ResponseFormat {
+    Parquet,
+    Delta,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Capabilities {
-    response_format: String,
+    response_format: ResponseFormat,
     reader_features: Option<Vec<String>>,
 }
 
 impl Capabilities {
-    pub fn response_format(&self) -> &str {
-        &self.response_format
+    pub fn response_format(&self) -> ResponseFormat {
+        self.response_format
     }
 
     pub fn is_delta_format(&self) -> bool {
-        self.response_format() == "delta"
+        self.response_format() == ResponseFormat::Delta
     }
 
     /// Returns the reader features if present.
@@ -116,7 +122,15 @@ where
                 let value = iter.next().unwrap_or_default();
 
                 match key {
-                    "responseformat" => response_format = Some(value.to_owned()),
+                    "responseformat" => {
+                        response_format = {
+                            match value {
+                                "parquet" => Some(ResponseFormat::Parquet),
+                                "delta" => Some(ResponseFormat::Delta),
+                                _ => None,
+                            }
+                        }
+                    }
                     "readerfeatures" => {
                         reader_features = Some(value.split(',').map(|s| s.to_owned()).collect())
                     }
@@ -133,7 +147,7 @@ where
         }
 
         Ok(Capabilities {
-            response_format: "parquet".to_owned(),
+            response_format: ResponseFormat::Parquet,
             reader_features: None,
         })
     }

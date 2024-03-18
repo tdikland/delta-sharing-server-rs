@@ -1,9 +1,0 @@
----
-source: src/response/parquet.rs
-expression: line
----
-{
-  "protocol": {
-    "minReaderVersion": 1
-  }
-}

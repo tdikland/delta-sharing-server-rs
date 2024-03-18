@@ -12,13 +12,13 @@ use super::{
     TableVersionNumber, Version, VersionRange,
 };
 
-struct DeltaReader {
+pub struct DeltaKernelReader {
     engine: SimpleClient,
 }
 
-impl DeltaReader {
-    pub fn new() -> DeltaReader {
-        DeltaReader {
+impl DeltaKernelReader {
+    pub fn new() -> DeltaKernelReader {
+        DeltaKernelReader {
             engine: SimpleClient::new(),
         }
     }
@@ -53,14 +53,14 @@ impl DeltaReader {
     }
 }
 
-impl Default for DeltaReader {
+impl Default for DeltaKernelReader {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl TableReader for DeltaReader {
+impl TableReader for DeltaKernelReader {
     async fn get_table_version_number(
         &self,
         storage_path: &str,

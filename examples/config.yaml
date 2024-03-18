@@ -5,5 +5,5 @@ shares:
     tables:
     - name: "smoes"
       location: "s3://delta-sharing-dat/basic_append/delta"
-    - name: "beer"
-      location: "s3://delta-sharing-dat/all_primitive_types"
+    # - name: "beer"
+    #   location: "s3://delta-sharing-dat/all_primitive_types"

@@ -1,0 +1,15 @@
+---
+source: src/state.rs
+assertion_line: 319
+expression: response
+---
+{
+  "items": [
+    {
+      "id": null,
+      "name": "acme_vaccine_data",
+      "share_name": "vaccine_share"
+    }
+  ],
+  "next_page_token": "continuation_token"
+}
