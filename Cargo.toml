@@ -52,7 +52,7 @@ testcontainers-modules = { version = "0.3.4", features = [
 ] }
 http = "1"
 md5 = "0.7.0"
-delta-kernel = { git = "https://github.com/tdikland/delta-kernel-rs.git", rev = "d4a75f4", features = [
+delta-kernel = { git = "https://github.com/tdikland/delta-kernel-rs.git", rev = "d172532", features = [
     "default-client",
     "simple-client",
 ], package = "deltakernel" }

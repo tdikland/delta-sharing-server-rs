@@ -1,0 +1,32 @@
+---
+source: src/response/delta.rs
+expression: file_line
+---
+{
+  "id": "0d166c1994fcdd317b5f18e2cfab52a0",
+  "deletionVectorFileId": null,
+  "version": null,
+  "timestamp": null,
+  "expirationTimestamp": null,
+  "deltaSingleAction": {
+    "add": {
+      "path": "https://bucket/prefix/key.snappy.parquet?sig=foo_signature",
+      "partitionValues": {},
+      "size": 573,
+      "modificationTime": 1619824428000,
+      "dataChange": false,
+      "stats": null,
+      "tags": {},
+      "deletionVector": {
+        "storageType": "p",
+        "pathOrInlineDv": "https://bucket/ab/deletion_vector_d2c639aa-8816-431a-aaf6-d3fe2512ff61.bin?sig=foo_signature",
+        "offset": 4,
+        "sizeInBytes": 40,
+        "cardinality": 6
+      },
+      "baseRowId": null,
+      "defaultRowCommitVersion": null,
+      "clusteringProvider": null
+    }
+  }
+}

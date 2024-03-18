@@ -1568,7 +1568,7 @@ dependencies = [
 [[package]]
 name = "deltakernel"
 version = "0.0.0"
-source = "git+https://github.com/tdikland/delta-kernel-rs.git?rev=d4a75f4#d4a75f46a4f97df4e083461d3a4751c3d1d2978f"
+source = "git+https://github.com/tdikland/delta-kernel-rs.git?rev=d172532#d1725322b9e4c0059525b19eedd78ea585478c8c"
 dependencies = [
  "arrow-arith 49.0.0",
  "arrow-array 49.0.0",

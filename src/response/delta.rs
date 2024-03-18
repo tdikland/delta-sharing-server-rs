@@ -5,6 +5,7 @@ use bytes::{BufMut, BytesMut};
 use delta_kernel::actions::{Add, Metadata, Protocol};
 use http::{header, StatusCode};
 use serde::Serialize;
+use url::Url;
 
 use crate::reader::{TableData, TableMeta};
 use crate::signer::UrlSigner;
@@ -216,12 +217,27 @@ impl FileResponseLine {
                 let signed_url = signer.sign_url(&file_url).await;
                 add.path = signed_url.url().to_string();
 
-                // if let Some(deletion_vector) = &mut add.deletion_vector {
-                //     let deletion_vector_url = format!("{}/{}", table_root, deletion_vector);
-                //     let signed_deletion_vector_url = signer.sign_url(&deletion_vector_url).await;
+                if let Some(dv) = &mut add.deletion_vector {
+                    match dv.storage_type.as_str() {
+                        "i" => (),
+                        "u" => {
+                            let parent = Url::parse(table_root).unwrap();
+                            let deletion_vector_url = dv.absolute_path(&parent).unwrap().unwrap();
+                            let signed_deletion_vector_url =
+                                signer.sign_url(deletion_vector_url.as_str()).await;
 
-                //     *deletion_vector = signed_deletion_vector_url.url().to_string();
-                // }
+                            dv.storage_type = "p".to_string();
+                            dv.path_or_inline_dv = signed_deletion_vector_url.url().to_string();
+                        }
+                        "p" => {
+                            let deletion_vector_url = dv.path_or_inline_dv.clone();
+                            let signed_dv = signer.sign_url(&deletion_vector_url).await;
+
+                            dv.path_or_inline_dv = signed_dv.url().to_string();
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     }
@@ -232,9 +248,9 @@ mod test {
     use std::{collections::HashMap, time::Duration};
 
     use chrono::{TimeZone, Utc};
+    use delta_kernel::actions::DeletionVectorDescriptor;
     use delta_kernel::actions::Format;
     use insta::assert_json_snapshot;
-    use mockall::predicate::eq;
 
     use crate::signer::{MockUrlSigner, SignedUrl};
 
@@ -322,6 +338,122 @@ mod test {
             data_change: false,
             tags: HashMap::new(),
             deletion_vector: None,
+            base_row_id: None,
+            default_row_commit_version: None,
+            clustering_provider: None,
+        };
+
+        let mut file_line = FileResponseLine::from_add_with_opts(add, None, None, None);
+        let table_root = "https://bucket/prefix";
+        let signer = Arc::new(mock_signer);
+        file_line.sign(table_root, signer).await;
+
+        assert_json_snapshot!(file_line);
+    }
+
+    #[tokio::test]
+    async fn sign_delta_file_line_inline_deletion_vector() {
+        let mut mock_signer = MockUrlSigner::new();
+        mock_signer.expect_sign_url().returning(|s| {
+            let url = format!("{s}?sig=foo_signature");
+            let valid_from = Utc.timestamp_opt(1_610_000_000, 0).unwrap();
+            let expiration = Duration::from_secs(3600);
+            SignedUrl::new(url, valid_from, expiration)
+        });
+
+        let add = Add {
+            path: "key.snappy.parquet".to_owned(),
+            partition_values: HashMap::new(),
+            size: 573,
+            stats: None,
+            modification_time: 1619824428000,
+            data_change: false,
+            tags: HashMap::new(),
+            deletion_vector: Some(DeletionVectorDescriptor {
+                storage_type: "i".to_string(),
+                path_or_inline_dv: "wi5b=000010000siXQKl0rr91000f55c8Xg0@@D72lkbi5=-{L".to_string(),
+                offset: None,
+                size_in_bytes: 40,
+                cardinality: 6,
+            }),
+            base_row_id: None,
+            default_row_commit_version: None,
+            clustering_provider: None,
+        };
+
+        let mut file_line = FileResponseLine::from_add_with_opts(add, None, None, None);
+        let table_root = "https://bucket/prefix";
+        let signer = Arc::new(mock_signer);
+        file_line.sign(table_root, signer).await;
+
+        assert_json_snapshot!(file_line);
+    }
+
+    #[tokio::test]
+    async fn sign_delta_file_line_relative_deletion_vector() {
+        let mut mock_signer = MockUrlSigner::new();
+        mock_signer.expect_sign_url().returning(|s| {
+            let url = format!("{s}?sig=foo_signature");
+            let valid_from = Utc.timestamp_opt(1_610_000_000, 0).unwrap();
+            let expiration = Duration::from_secs(3600);
+            SignedUrl::new(url, valid_from, expiration)
+        });
+
+        let add = Add {
+            path: "key.snappy.parquet".to_owned(),
+            partition_values: HashMap::new(),
+            size: 573,
+            stats: None,
+            modification_time: 1619824428000,
+            data_change: false,
+            tags: HashMap::new(),
+            deletion_vector: Some(DeletionVectorDescriptor {
+                storage_type: "u".to_string(),
+                path_or_inline_dv: "ab^-aqEH.-t@S}K{vb[*k^".to_string(),
+                offset: Some(4),
+                size_in_bytes: 40,
+                cardinality: 6,
+            }),
+            base_row_id: None,
+            default_row_commit_version: None,
+            clustering_provider: None,
+        };
+
+        let mut file_line = FileResponseLine::from_add_with_opts(add, None, None, None);
+        let table_root = "https://bucket/prefix";
+        let signer = Arc::new(mock_signer);
+        file_line.sign(table_root, signer).await;
+
+        assert_json_snapshot!(file_line);
+    }
+
+    #[tokio::test]
+    async fn sign_delta_file_line_absolute_deletion_vector() {
+        let mut mock_signer = MockUrlSigner::new();
+        mock_signer.expect_sign_url().returning(|s| {
+            let url = format!("{s}?sig=foo_signature");
+            let valid_from = Utc.timestamp_opt(1_610_000_000, 0).unwrap();
+            let expiration = Duration::from_secs(3600);
+            SignedUrl::new(url, valid_from, expiration)
+        });
+
+        let add = Add {
+            path: "key.snappy.parquet".to_owned(),
+            partition_values: HashMap::new(),
+            size: 573,
+            stats: None,
+            modification_time: 1619824428000,
+            data_change: false,
+            tags: HashMap::new(),
+            deletion_vector: Some(DeletionVectorDescriptor {
+                storage_type: "p".to_string(),
+                path_or_inline_dv:
+                    "s3://mytable/deletion_vector_d2c639aa-8816-431a-aaf6-d3fe2512ff61.bin"
+                        .to_string(),
+                offset: Some(4),
+                size_in_bytes: 40,
+                cardinality: 6,
+            }),
             base_row_id: None,
             default_row_commit_version: None,
             clustering_provider: None,
