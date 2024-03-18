@@ -43,7 +43,7 @@ pub trait TableReader: Send + Sync {
         limit: Option<u64>,
         predicates: Option<String>,
         opt: Option<HashMap<String, String>>,
-    ) -> Result<UnsignedTableData, TableReaderError>;
+    ) -> Result<TableData, TableReaderError>;
 
     /// Retrieve the table change data for a specific range of table versions.
     ///
@@ -54,34 +54,39 @@ pub trait TableReader: Send + Sync {
         storage_path: &str,
         range: VersionRange,
         opt: Option<HashMap<String, String>>,
-    ) -> Result<UnsignedTableData, TableReaderError>;
+    ) -> Result<TableData, TableReaderError>;
 }
 
 /// Table version number.
-pub type TableVersionNumber = u64;
+pub struct TableVersionNumber(u64);
 
 /// Table metadata for a given table version.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TableMetadata {
-    /// Table version.
-    pub version: u64,
-    /// Minimum required table reader protocol implementation.
-    pub protocol: Protocol,
-    /// Table metadata
-    pub metadata: Metadata,
+    version: u64,
+    protocol: Protocol,
+    metadata: Metadata,
+    metadata_num_files: Option<u64>,
+    metadata_size: Option<u64>,
 }
 
 /// Table metadata and data descriptors, not yet publicly accessible.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct UnsignedTableData {
-    /// Table version.
-    pub version: u64,
-    /// Minimum required table reader protocol implementation.
-    pub protocol: Protocol,
-    /// Table metadata
-    pub metadata: Metadata,
-    /// Set of data file representing the table
-    pub data: Vec<UnsignedDataFile>,
+pub struct TableData {
+    version: u64,
+    protocol: Protocol,
+    metadata: Metadata,
+    metadata_num_files: Option<u64>,
+    metadata_size: Option<u64>,
+    data: Vec<(Action, Option<u64>)>,
+}
+
+pub enum Action {
+    Protocol(Protocol),
+    Metadata(Metadata),
+    Add(Add),
+    Cdf(AddCDCFile),
+    Remove(Remove),
 }
 
 /// A representation of data or mutation in a table referenced using an object

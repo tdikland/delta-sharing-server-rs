@@ -65,6 +65,8 @@ tempfile = "3.6.0"
 aws-smithy-runtime = { version = "1", features = ["test-util"] }
 http = "1"
 axum-test = "14"
+deltakernel = { git = "https://github.com/delta-incubator/delta-kernel-rs.git", branch = "main" }
+
 
 [[example]]
 name = "dynamo-delta-axum"

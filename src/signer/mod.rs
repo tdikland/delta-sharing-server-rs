@@ -47,10 +47,7 @@ pub trait UrlSigner: Send + Sync {
     }
 
     /// Create presigned urls for all data files in a table version.
-    async fn sign_table_data(
-        &self,
-        table_data: crate::reader::UnsignedTableData,
-    ) -> SignedTableData {
+    async fn sign_table_data(&self, table_data: crate::reader::TableData) -> SignedTableData {
         let mut signed_data_files = vec![];
         for data_file in table_data.data {
             signed_data_files.push(self.sign_data_file(data_file).await);

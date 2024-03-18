@@ -8,7 +8,9 @@ use crate::{
     auth::RecipientId,
     catalog::{Catalog, Page, Pagination, Schema, Share, Table},
     error::ServerError,
+    extract::Capabilities,
     reader::{TableMetadata, TableReader, TableVersionNumber, Version},
+    response::TableActionsResponse,
     signer::{registry::SignerRegistry, SignedTableData, UrlSigner},
 };
 
@@ -150,6 +152,7 @@ impl SharingServerState {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
+        _capabilities: &Capabilities,
     ) -> Result<TableMetadata, ServerError> {
         let table = self
             .catalog
@@ -173,7 +176,8 @@ impl SharingServerState {
         schema_name: &str,
         table_name: &str,
         _version: Version,
-    ) -> Result<SignedTableData, ServerError> {
+        _capabilities: &Capabilities,
+    ) -> Result<TableActionsResponse, ServerError> {
         let table = self
             .catalog
             .get_table(client_id, share_name, schema_name, table_name)
@@ -190,6 +194,8 @@ impl SharingServerState {
 
         let signer = self.signers.get_or_noop("s3");
         let signed_table_data = signer.sign_table_data(table_data).await;
+
+        
 
         dbg!(&signed_table_data);
 

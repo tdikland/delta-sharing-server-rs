@@ -6,8 +6,7 @@ use deltalake::DeltaTableError;
 use crate::reader::UnsignedDataFile;
 
 use super::{
-    TableMetadata, TableReader, TableReaderError, TableVersionNumber, UnsignedTableData, Version,
-    VersionRange,
+    TableMetadata, TableReader, TableReaderError, TableVersionNumber, Version, VersionRange,
 };
 
 /// TableReader implementation for the Delta Lake format.
@@ -67,6 +66,8 @@ impl TableReader for DeltaTableReader {
             version: delta_table.version() as u64,
             protocol,
             metadata,
+            metadata_num_files: None,
+            metadata_size: None,
         })
     }
 

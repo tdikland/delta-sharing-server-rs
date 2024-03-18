@@ -135,19 +135,25 @@ async fn get_table_metadata(
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> Result<TableActionsResponse> {
     let table_metadata = state
-        .get_table_metadata(&client_id, &share_name, &schema_name, &table_name)
+        .get_table_metadata(
+            &client_id,
+            &share_name,
+            &schema_name,
+            &table_name,
+            &capabilities,
+        )
         .await?;
 
     // TODO: find out consequences of the delta-capability-header
     // e.g. check the protocol to see what reader features are required and checking against the header
-    if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version > 1 {
-        if capabilities.has_reader_feature("deletionvectors") {
-            return Err(ServerError::unsupported_operation(
-                "The required deletion vectors feature is not implemented.",
-            ));
-        }
-        return Ok(TableActionsResponse::new_delta(table_metadata));
-    }
+    // if capabilities.is_delta_format() && table_metadata.protocol.min_reader_version > 1 {
+    //     if capabilities.has_reader_feature("deletionvectors") {
+    //         return Err(ServerError::unsupported_operation(
+    //             "The required deletion vectors feature is not implemented.",
+    //         ));
+    //     }
+    //     return Ok(TableActionsResponse::new_delta(table_metadata));
+    // }
 
     Ok(TableActionsResponse::new_parquet(table_metadata))
 }
@@ -156,22 +162,20 @@ async fn get_table_metadata(
 async fn get_table_data(
     state: State<Arc<SharingServerState>>,
     client_id: Extension<RecipientId>,
-    _capabilities: Capabilities,
+    capabilities: Capabilities,
     Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
     // _predicates: TableDataPredicates,
 ) -> Result<TableActionsResponse> {
-    // TODO: Get P&M before to asses if the client can read the table
-    let data = state
+    state
         .get_table_data(
             &client_id,
             &share_name,
             &schema_name,
             &table_name,
             Version::Latest,
+            &capabilities,
         )
-        .await?;
-
-    Ok(TableActionsResponse::new_parquet(data))
+        .await
 }
 
 #[debug_handler]
@@ -183,6 +187,6 @@ async fn get_table_changes(
     // _version_range: TableChangePredicates,
 ) -> Result<TableActionsResponse> {
     Err(ServerError::unsupported_operation(
-        "The required deletion vectors feature is not implemented.",
+        "table changes support not yet implemented",
     ))
 }
