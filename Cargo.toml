@@ -52,6 +52,10 @@ testcontainers-modules = { version = "0.3.4", features = [
 ] }
 http = "1"
 md5 = "0.7.0"
+delta-kernel = { git = "https://github.com/tdikland/delta-kernel-rs.git", rev = "d4a75f4", features = [
+    "default-client",
+    "simple-client",
+], package = "deltakernel" }
 
 [dev-dependencies]
 tracing-subscriber = "0.3.17"
@@ -65,7 +69,6 @@ tempfile = "3.6.0"
 aws-smithy-runtime = { version = "1", features = ["test-util"] }
 http = "1"
 axum-test = "14"
-deltakernel = { git = "https://github.com/delta-incubator/delta-kernel-rs.git", branch = "main" }
 
 
 [[example]]

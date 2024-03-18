@@ -1,0 +1,30 @@
+---
+source: src/response/delta.rs
+expression: line
+---
+{
+  "file": {
+    "id": "765582934747e371cca6baeeaa4f45d0",
+    "deletionVectorFileId": null,
+    "version": 1,
+    "timestamp": 2,
+    "expirationTimestamp": 3,
+    "deltaSingleAction": {
+      "add": {
+        "path": "https://bucket/key",
+        "partitionValues": {
+          "date": "2021-04-28"
+        },
+        "size": 573,
+        "modificationTime": 1619824428000,
+        "dataChange": false,
+        "stats": "{\"numRecords\":1}",
+        "tags": {},
+        "deletionVector": null,
+        "baseRowId": null,
+        "defaultRowCommitVersion": null,
+        "clusteringProvider": null
+      }
+    }
+  }
+}

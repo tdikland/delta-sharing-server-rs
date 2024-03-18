@@ -1,0 +1,26 @@
+---
+source: src/response/delta.rs
+expression: file_line
+---
+{
+  "id": "0d166c1994fcdd317b5f18e2cfab52a0",
+  "deletionVectorFileId": null,
+  "version": null,
+  "timestamp": null,
+  "expirationTimestamp": null,
+  "deltaSingleAction": {
+    "add": {
+      "path": "https://bucket/prefix/key.snappy.parquet?sig=foo_signature",
+      "partitionValues": {},
+      "size": 573,
+      "modificationTime": 1619824428000,
+      "dataChange": false,
+      "stats": null,
+      "tags": {},
+      "deletionVector": null,
+      "baseRowId": null,
+      "defaultRowCommitVersion": null,
+      "clusteringProvider": null
+    }
+  }
+}

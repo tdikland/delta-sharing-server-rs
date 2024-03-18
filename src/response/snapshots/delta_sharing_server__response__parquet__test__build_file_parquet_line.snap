@@ -4,8 +4,8 @@ expression: line
 ---
 {
   "file": {
-    "url": "https://bucket/key?sig=foo",
-    "id": "e4250277491e245118e0d72a3287d385",
+    "url": "key.snappy.parquet",
+    "id": "0d166c1994fcdd317b5f18e2cfab52a0",
     "partitionValues": {
       "date": "2021-04-28"
     },

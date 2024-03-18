@@ -1,0 +1,24 @@
+---
+source: src/response/parquet.rs
+expression: line
+---
+{
+  "metaData": {
+    "id": "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2",
+    "name": "name",
+    "description": "description",
+    "format": {
+      "provider": "parquet"
+    },
+    "schemaString": "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}}]}",
+    "partitionColumns": [
+      "date"
+    ],
+    "configuration": {
+      "opt1": "true"
+    },
+    "version": 1,
+    "size": 123456,
+    "numFiles": 5
+  }
+}

@@ -155,7 +155,9 @@ async fn get_table_metadata(
     //     return Ok(TableActionsResponse::new_delta(table_metadata));
     // }
 
-    Ok(TableActionsResponse::new_parquet(table_metadata))
+    // Ok(TableActionsResponse::new_parquet(table_metadata))
+
+    todo!()
 }
 
 #[debug_handler]

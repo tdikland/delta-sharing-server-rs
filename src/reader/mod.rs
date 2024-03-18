@@ -4,13 +4,13 @@ use std::{collections::HashMap, error::Error, fmt::Display};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-// TODO: refer to the official kernel types (not yet available)
-use deltalake::kernel::{Add, AddCDCFile, Metadata, Protocol, Remove};
+use delta_kernel::actions::{Add, Metadata, Protocol};
 
 /// Table reader implementation for the Delta Lake format.
-pub mod delta;
+// pub mod delta;
+pub mod simple;
 
 /// Trait for reading a specific table format from cloud storage.
 #[cfg_attr(test, mockall::automock)]
@@ -25,10 +25,7 @@ pub trait TableReader: Send + Sync {
     ) -> Result<TableVersionNumber, TableReaderError>;
 
     /// Retrieve the table metadata corresponding to the latest table version.
-    async fn get_table_metadata(
-        &self,
-        storage_path: &str,
-    ) -> Result<TableMetadata, TableReaderError>;
+    async fn get_table_meta(&self, storage_path: &str) -> Result<TableMeta, TableReaderError>;
 
     /// Retrieve the table data for a specific table version.
     ///
@@ -55,57 +52,6 @@ pub trait TableReader: Send + Sync {
         range: VersionRange,
         opt: Option<HashMap<String, String>>,
     ) -> Result<TableData, TableReaderError>;
-}
-
-/// Table version number.
-pub struct TableVersionNumber(u64);
-
-/// Table metadata for a given table version.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TableMetadata {
-    version: u64,
-    protocol: Protocol,
-    metadata: Metadata,
-    metadata_num_files: Option<u64>,
-    metadata_size: Option<u64>,
-}
-
-/// Table metadata and data descriptors, not yet publicly accessible.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TableData {
-    version: u64,
-    protocol: Protocol,
-    metadata: Metadata,
-    metadata_num_files: Option<u64>,
-    metadata_size: Option<u64>,
-    data: Vec<(Action, Option<u64>)>,
-}
-
-pub enum Action {
-    Protocol(Protocol),
-    Metadata(Metadata),
-    Add(Add),
-    Cdf(AddCDCFile),
-    Remove(Remove),
-}
-
-/// A representation of data or mutation in a table referenced using an object
-/// store url.
-///
-/// A table is represented as a set of files that together are the full table.
-/// Every data file has a reference to the underlying object store in its url
-/// field.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum UnsignedDataFile {
-    /// A file containing data part of the table.
-    File(Add),
-    /// A file containing data that was added to the table in this version.
-    Add(Add),
-    /// A file containing data that was changed in this version of the table.
-    Cdf(AddCDCFile),
-    /// A file containing data that was removed since the last table version.
-    Remove(Remove),
 }
 
 /// Requested table version.
@@ -136,6 +82,174 @@ pub enum VersionRange {
         /// Last version must be the earliest after the end timestamp.
         end: DateTime<Utc>,
     },
+}
+
+/// Table version number.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableVersionNumber(u64);
+
+impl TableVersionNumber {
+    /// Create a new table version number.
+    pub fn new(version: u64) -> Self {
+        Self(version)
+    }
+
+    /// Get the table version number.
+    pub fn version(&self) -> u64 {
+        self.0
+    }
+}
+
+/// Table metadata for a given table version.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableMeta {
+    version: u64,
+    protocol: TableProtocol,
+    metadata: TableMetadata,
+}
+
+impl TableMeta {
+    /// Create a new table metadata.
+    pub fn new(version: u64, protocol: TableProtocol, metadata: TableMetadata) -> Self {
+        Self {
+            version,
+            protocol,
+            metadata,
+        }
+    }
+
+    /// Get the table version.
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// Get the table protocol.
+    pub fn protocol(&self) -> &TableProtocol {
+        &self.protocol
+    }
+
+    /// Get the table metadata.
+    pub fn metadata(&self) -> &TableMetadata {
+        &self.metadata
+    }
+
+    pub fn num_files(&self) -> Option<u64> {
+        self.metadata.num_files
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.metadata.size
+    }
+}
+
+/// Table metadata and data descriptors, not yet publicly accessible.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableData {
+    version: u64,
+    protocol: TableProtocol,
+    metadata: TableMetadata,
+    data: Vec<TableFile>,
+}
+
+impl TableData {
+    /// Create a new table data.
+    pub fn new(
+        version: u64,
+        protocol: TableProtocol,
+        metadata: TableMetadata,
+        data: Vec<TableFile>,
+    ) -> Self {
+        Self {
+            version,
+            protocol,
+            metadata,
+            data,
+        }
+    }
+
+    /// Get the table version.
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// Get the table protocol.
+    pub fn protocol(&self) -> &TableProtocol {
+        &self.protocol
+    }
+
+    /// Get the table metadata.
+    pub fn metadata(&self) -> &TableMetadata {
+        &self.metadata
+    }
+
+    /// Get the table data.
+    pub fn data(&self) -> &[TableFile] {
+        &self.data
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableProtocol {
+    inner: Protocol,
+}
+
+impl TableProtocol {
+    pub fn new(inner: Protocol) -> Self {
+        Self { inner }
+    }
+
+    pub fn into_inner(self) -> Protocol {
+        self.inner
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableMetadata {
+    inner: Metadata,
+    num_files: Option<u64>,
+    size: Option<u64>,
+}
+
+impl TableMetadata {
+    pub fn new(inner: Metadata, num_files: Option<u64>, size: Option<u64>) -> Self {
+        Self {
+            inner,
+            num_files,
+            size,
+        }
+    }
+
+    pub fn num_files(&self) -> Option<u64> {
+        self.num_files
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.size
+    }
+
+    pub fn into_inner(self) -> Metadata {
+        self.inner
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TableFile {
+    inner: Add,
+    size: Option<u64>,
+}
+
+impl TableFile {
+    pub fn new(inner: Add, size: Option<u64>) -> Self {
+        Self { inner, size }
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.size
+    }
+
+    pub fn into_inner(self) -> Add {
+        self.inner
+    }
 }
 
 /// Error that occur during the reading of the table format.

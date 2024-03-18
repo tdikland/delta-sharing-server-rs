@@ -1,0 +1,11 @@
+---
+source: src/response/parquet.rs
+expression: file_line
+---
+{
+  "url": "s3://bucket/prefix/key.snappy.parquet?sig=foo_signature",
+  "id": "0d166c1994fcdd317b5f18e2cfab52a0",
+  "partitionValues": {},
+  "size": 573,
+  "expirationTimestamp": 1610003600000
+}

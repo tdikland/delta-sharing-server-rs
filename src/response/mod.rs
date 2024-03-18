@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::http::HeaderName;
 use axum::response::Response;
 use axum::{
@@ -11,6 +13,7 @@ use self::delta::DeltaResponse;
 use self::parquet::ParquetResponse;
 use crate::catalog::{Page, Schema as SchemaInfo, Share as ShareInfo, Table as TableInfo};
 use crate::reader::TableVersionNumber;
+use crate::signer::UrlSigner;
 
 pub mod delta;
 pub mod parquet;
@@ -204,7 +207,7 @@ impl IntoResponse for TableVersionResponse {
     fn into_response(self) -> Response {
         (
             StatusCode::OK,
-            [(DELTA_TABLE_VERSION.clone(), self.version)],
+            [(DELTA_TABLE_VERSION.clone(), self.version.version())],
         )
             .into_response()
     }
@@ -223,6 +226,19 @@ impl TableActionsResponse {
     pub fn new_delta<R: Into<DeltaResponse>>(response: R) -> Self {
         Self::Delta(response.into())
     }
+
+    pub async fn sign(self, table_root: &str, signer: Arc<dyn UrlSigner>) -> Self {
+        match self {
+            TableActionsResponse::Parquet(response) => {
+                let signed_response = response.sign(table_root, signer).await;
+                TableActionsResponse::Parquet(signed_response)
+            }
+            TableActionsResponse::Delta(mut response) => {
+                response.sign(table_root, signer).await;
+                TableActionsResponse::Delta(response)
+            }
+        }
+    }
 }
 
 impl IntoResponse for TableActionsResponse {
@@ -234,138 +250,130 @@ impl IntoResponse for TableActionsResponse {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use axum::{
-//         body::to_bytes,
-//         http::{header::CONTENT_TYPE, HeaderValue},
-//     };
-//     use bytes::Bytes;
+#[cfg(test)]
+mod test {
+    use axum::{
+        body::to_bytes,
+        http::{header::CONTENT_TYPE, HeaderValue},
+    };
+    use bytes::Bytes;
 
-//     use super::*;
+    use super::*;
 
-//     #[tokio::test]
-//     async fn list_shares_response() {
-//         let share_info = Page::new(
-//             vec![ShareInfo::new("foo".to_owned(), Some("foo_id".to_owned()))],
-//             Some("bar".to_owned()),
-//         );
-//         let response = ListSharesResponse::from(share_info);
-//         let res = response.into_response();
+    #[tokio::test]
+    async fn list_shares_response() {
+        let share_info = Page::new(
+            vec![ShareInfo::builder()
+                .name("share_name")
+                .id("share_id")
+                .build()
+                .unwrap()],
+            Some("page_token".to_owned()),
+        );
+        let response = ListSharesResponse::from(share_info);
+        let res = response.into_response();
 
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get(CONTENT_TYPE).unwrap(),
-//             HeaderValue::from_static("application/json; charset=utf-8")
-//         );
-//         assert_eq!(
-//             to_bytes(res.into_body(), 100).await.unwrap(),
-//             Bytes::from(r#"{"items":[{"name":"foo","id":"foo_id"}],"nextPageToken":"bar"}"#)
-//         );
-//     }
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(CONTENT_TYPE).unwrap(),
+            HeaderValue::from_static("application/json; charset=utf-8")
+        );
+        assert_eq!(
+            to_bytes(res.into_body(), 1000).await.unwrap(),
+            Bytes::from(
+                r#"{"items":[{"name":"share_name","id":"share_id"}],"nextPageToken":"page_token"}"#
+            )
+        );
+    }
 
-//     #[tokio::test]
-//     async fn get_share_response() {
-//         let share_info = Share::new("foo".to_owned(), Some("foo_id".to_owned()));
-//         let response = GetShareResponse::from(share_info);
-//         let res = response.into_response();
+    #[tokio::test]
+    async fn get_share_response() {
+        let share_info = ShareInfo::builder()
+            .name("share_name")
+            .id("share_id")
+            .build()
+            .unwrap();
+        let response = GetShareResponse::from(share_info);
+        let res = response.into_response();
 
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get(CONTENT_TYPE).unwrap(),
-//             HeaderValue::from_static("application/json; charset=utf-8")
-//         );
-//         assert_eq!(
-//             to_bytes(res.into_body(), 100).await.unwrap(),
-//             Bytes::from(r#"{"share":{"name":"foo","id":"foo_id"}}"#)
-//         );
-//     }
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(CONTENT_TYPE).unwrap(),
+            HeaderValue::from_static("application/json; charset=utf-8")
+        );
+        assert_eq!(
+            to_bytes(res.into_body(), 1000).await.unwrap(),
+            Bytes::from(r#"{"share":{"name":"share_name","id":"share_id"}}"#)
+        );
+    }
 
-//     #[tokio::test]
-//     async fn list_schemas_response() {
-//         let schema_info = Page::new(
-//             vec![Schema::new("foo".to_owned(), "bar".to_owned())],
-//             Some("token".to_owned()),
-//         );
-//         let response = ListSchemasResponse::from(schema_info);
-//         let res = response.into_response();
+    #[tokio::test]
+    async fn list_schemas_response() {
+        let schema_info = Page::new(
+            vec![SchemaInfo::builder()
+                .name("schema_name")
+                .share_name("share_name")
+                .build()
+                .unwrap()],
+            Some("page_token".to_owned()),
+        );
+        let response = ListSchemasResponse::from(schema_info);
+        let res = response.into_response();
 
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get(CONTENT_TYPE).unwrap(),
-//             HeaderValue::from_static("application/json; charset=utf-8")
-//         );
-//         assert_eq!(
-//             to_bytes(res.into_body(), 100).await.unwrap(),
-//             Bytes::from(r#"{"items":[{"name":"foo","share":"bar"}],"nextPageToken":"token"}"#)
-//         );
-//     }
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(CONTENT_TYPE).unwrap(),
+            HeaderValue::from_static("application/json; charset=utf-8")
+        );
+        assert_eq!(
+            to_bytes(res.into_body(), 1000).await.unwrap(),
+            Bytes::from(
+                r#"{"items":[{"name":"schema_name","share":"share_name"}],"nextPageToken":"page_token"}"#
+            )
+        );
+    }
 
-//     #[tokio::test]
-//     async fn list_tables_response() {
-//         let table_info = Page::new(
-//             vec![Table::new(
-//                 "foo".to_owned(),
-//                 "bar".to_owned(),
-//                 "baz".to_owned(),
-//                 "table_location".to_owned(),
-//             )],
-//             Some("token".to_owned()),
-//         );
-//         let response = ListTablesResponse::from(table_info);
-//         let res = response.into_response();
+    #[tokio::test]
+    async fn list_tables_response() {
+        let table_info = Page::new(
+            vec![TableInfo::builder()
+                .name("table_name")
+                .schema_name("schema_name")
+                .share_name("share_name")
+                .id("table_id")
+                .share_id("share_id")
+                .storage_path("not important here")
+                .build()
+                .unwrap()],
+            Some("page_token".to_owned()),
+        );
+        let response = ListTablesResponse::from(table_info);
+        let res = response.into_response();
 
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get(CONTENT_TYPE).unwrap(),
-//             HeaderValue::from_static("application/json; charset=utf-8")
-//         );
-//         assert_eq!(
-//             to_bytes(res.into_body(), 100).await.unwrap(),
-//             Bytes::from(
-//                 r#"{"items":[{"name":"foo","schema":"bar","share":"baz"}],"nextPageToken":"token"}"#
-//             )
-//         );
-//     }
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(CONTENT_TYPE).unwrap(),
+            HeaderValue::from_static("application/json; charset=utf-8")
+        );
+        assert_eq!(
+            to_bytes(res.into_body(), 1000).await.unwrap(),
+            Bytes::from(
+                r#"{"items":[{"name":"table_name","schema":"schema_name","share":"share_name","shareId":"share_id","id":"table_id"}],"nextPageToken":"page_token"}"#
+            )
+        );
+    }
 
-//     #[tokio::test]
-//     async fn table_version_response() {
-//         let response = TableVersionResponse { version: 123 };
-//         let res = response.into_response();
+    #[tokio::test]
+    async fn table_version_response() {
+        let response = TableVersionResponse {
+            version: TableVersionNumber::new(123),
+        };
+        let res = response.into_response();
 
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get("Delta-Table-Version").unwrap(),
-//             HeaderValue::from_static("123")
-//         );
-//     }
-
-//     #[tokio::test]
-//     async fn parquet_response() {
-//         let response = ParquetSharingResponse {
-//             version: 123,
-//             protocol: ProtocolBuilder::new().min_reader_version(1).build(),
-//             metadata: MetadataBuilder::new("id", "schema_str").build(),
-//             data: vec![],
-//         };
-//         let res = response.into_response();
-
-//         assert_eq!(res.status(), StatusCode::OK);
-//         assert_eq!(
-//             res.headers().get(CONTENT_TYPE).unwrap(),
-//             HeaderValue::from_static("application/x-ndjson; charset=utf-8")
-//         );
-//         assert_eq!(
-//             res.headers().get("Delta-Table-Version").unwrap(),
-//             HeaderValue::from_static("123")
-//         );
-//         assert_eq!(
-//             to_bytes(res.into_body(), 999).await.unwrap(),
-//             Bytes::from(
-//                 r#"{"minReaderVersion":1}
-// {"id":"id","format":{"provider":"parquet"},"schemaString":"schema_str","partitionColumns":[]}
-// "#
-//             )
-//         );
-//     }
-// }
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get("Delta-Table-Version").unwrap(),
+            HeaderValue::from_static("123")
+        );
+    }
+}

@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use deltalake::DeltaTableError;
 
-use crate::reader::UnsignedDataFile;
+use crate::reader::{TableFile, TableMetadata, TableProtocol};
 
 use super::{
-    TableMetadata, TableReader, TableReaderError, TableVersionNumber, Version, VersionRange,
+    TableData, TableMeta, TableReader, TableReaderError, TableVersionNumber, Version, VersionRange,
 };
 
 /// TableReader implementation for the Delta Lake format.
@@ -34,40 +34,33 @@ impl TableReader for DeltaTableReader {
         storage_path: &str,
         version: Version,
     ) -> Result<TableVersionNumber, TableReaderError> {
-        match version {
-            Version::Latest => {
-                let delta_table = deltalake::open_table(storage_path).await?;
-                Ok(delta_table.version() as u64)
-            }
+        let table = match version {
+            Version::Latest => deltalake::open_table(storage_path).await?,
             Version::Number(version) => {
-                let delta_table =
-                    deltalake::open_table_with_version(storage_path, version as i64).await?;
-                Ok(delta_table.version() as u64)
+                deltalake::open_table_with_version(storage_path, version as i64).await?
             }
             Version::Timestamp(ts) => {
-                let delta_table =
-                    deltalake::open_table_with_ds(storage_path, ts.to_rfc3339()).await?;
-                Ok(delta_table.version() as u64)
+                deltalake::open_table_with_ds(storage_path, ts.to_rfc3339()).await?
             }
-        }
+        };
+        Ok(TableVersionNumber(table.version() as u64))
     }
 
-    async fn get_table_metadata(
-        &self,
-        storage_path: &str,
-    ) -> Result<TableMetadata, TableReaderError> {
+    async fn get_table_meta(&self, storage_path: &str) -> Result<TableMeta, TableReaderError> {
         tracing::info!(path = ?storage_path, "get table metadata");
         let delta_table = deltalake::open_table(storage_path).await?;
 
         let protocol = delta_table.protocol()?.clone();
         let metadata = delta_table.metadata()?.clone();
 
-        Ok(TableMetadata {
+        Ok(TableMeta {
             version: delta_table.version() as u64,
-            protocol,
-            metadata,
-            metadata_num_files: None,
-            metadata_size: None,
+            protocol: TableProtocol { inner: protocol },
+            metadata: TableMetadata {
+                inner: metadata,
+                num_files: None,
+                size: None,
+            },
         })
     }
 
@@ -78,7 +71,7 @@ impl TableReader for DeltaTableReader {
         _limit: Option<u64>,
         _predicates: Option<String>,
         _opt: Option<HashMap<String, String>>,
-    ) -> Result<UnsignedTableData, TableReaderError> {
+    ) -> Result<TableData, TableReaderError> {
         tracing::info!(
             "get_table_data: storage_path={}, version={:?}",
             storage_path,
@@ -100,13 +93,23 @@ impl TableReader for DeltaTableReader {
         let mut table_files = vec![];
         for mut file in delta_table.state.as_ref().unwrap().file_actions()? {
             file.path = format!("{}/{}", storage_path, file.path);
-            table_files.push(UnsignedDataFile::File(file));
+            table_files.push(
+                TableFile {
+                    data: file,
+                    size: None,
+                }
+                .into(),
+            );
         }
 
-        Ok(UnsignedTableData {
+        Ok(TableData {
             version: delta_table.version() as u64,
-            protocol,
-            metadata,
+            protocol: TableProtocol { protocol },
+            metadata: TableMetadata {
+                metadata,
+                num_files: None,
+                size: None,
+            },
             data: table_files,
         })
     }
@@ -116,7 +119,7 @@ impl TableReader for DeltaTableReader {
         _storage_path: &str,
         _range: VersionRange,
         _opt: Option<HashMap<String, String>>,
-    ) -> Result<UnsignedTableData, TableReaderError> {
+    ) -> Result<TableData, TableReaderError> {
         Err(TableReaderError::Other)
     }
 }

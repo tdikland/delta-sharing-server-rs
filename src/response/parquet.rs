@@ -1,13 +1,13 @@
 use axum::response::{IntoResponse, Response};
 use bytes::{BufMut, BytesMut};
-use deltalake::kernel::{Add, AddCDCFile, Format, Metadata, Protocol, Remove};
+use delta_kernel::actions::{Add, Format, Metadata, Protocol};
 use http::{header, StatusCode};
 use serde::Serialize;
-use std::{collections::HashMap, io::Write};
+use std::{collections::HashMap, io::Write, sync::Arc};
 
 use crate::{
-    reader::TableMetadata,
-    signer::{SignedDataFile, SignedTableData},
+    reader::{TableData, TableMeta},
+    signer::UrlSigner,
 };
 
 pub struct ParquetResponse {
@@ -15,6 +15,15 @@ pub struct ParquetResponse {
     protocol: ParquetResponseLine,
     metadata: ParquetResponseLine,
     lines: Vec<ParquetResponseLine>,
+}
+
+impl ParquetResponse {
+    pub async fn sign(mut self, table_root: &str, signer: Arc<dyn UrlSigner>) -> Self {
+        for line in self.lines.iter_mut() {
+            line.sign(table_root, signer.clone()).await;
+        }
+        self
+    }
 }
 
 impl IntoResponse for ParquetResponse {
@@ -45,35 +54,43 @@ impl IntoResponse for ParquetResponse {
     }
 }
 
-impl From<TableMetadata> for ParquetResponse {
-    fn from(table_metadata: TableMetadata) -> Self {
+impl From<TableMeta> for ParquetResponse {
+    fn from(meta: TableMeta) -> Self {
+        let protocol = ProtocolLine::from_protocol(meta.protocol().clone().into_inner());
+        let metadata = MetadataLine::from_metadata_with_opts(
+            meta.metadata().clone().into_inner(),
+            None,
+            None,
+            None,
+        );
+
         Self {
-            version: table_metadata.version,
-            protocol: ParquetResponseLine::Protocol(table_metadata.protocol.clone().into()),
-            metadata: ParquetResponseLine::Metadata(MetadataParquetLine::from_metadata_with_opts(
-                table_metadata.metadata,
-                None,
-                None,
-                None,
-            )),
+            version: meta.version(),
+            protocol: protocol.into(),
+            metadata: metadata.into(),
             lines: vec![],
         }
     }
 }
 
-impl From<SignedTableData> for ParquetResponse {
-    fn from(signed_table_data: SignedTableData) -> Self {
-        let lines = signed_table_data.data.into_iter().map(Into::into).collect();
+impl From<TableData> for ParquetResponse {
+    fn from(data: TableData) -> Self {
+        let protocol = ProtocolLine::from_protocol(data.protocol().clone().into_inner());
+        let metadata = MetadataLine::from_metadata_with_opts(
+            data.metadata().clone().into_inner(),
+            None,
+            None,
+            None,
+        );
 
+        let mut lines = vec![];
+        for file in data.data().into_iter().cloned() {
+            lines.push(FileLine::from_add_with_opts(file.into_inner(), None, None, None).into());
+        }
         Self {
-            version: signed_table_data.version,
-            protocol: ParquetResponseLine::Protocol(signed_table_data.protocol.clone().into()),
-            metadata: ParquetResponseLine::Metadata(MetadataParquetLine::from_metadata_with_opts(
-                signed_table_data.metadata,
-                None,
-                None,
-                None,
-            )),
+            version: data.version(),
+            protocol: protocol.into(),
+            metadata: metadata.into(),
             lines,
         }
     }
@@ -82,46 +99,53 @@ impl From<SignedTableData> for ParquetResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum ParquetResponseLine {
-    Protocol(ProtocolParquetLine),
+    Protocol(ProtocolLine),
     #[serde(rename = "metaData")]
-    Metadata(MetadataParquetLine),
-    File(FileParquetLine),
-    Add(AddParquetLine),
-    Cdf(CdfParquetLine),
-    Remove(RemoveParquetLine),
+    Metadata(MetadataLine),
+    File(FileLine),
 }
 
-impl From<SignedDataFile> for ParquetResponseLine {
-    fn from(signed_data_file: SignedDataFile) -> Self {
-        match signed_data_file {
-            SignedDataFile::File(file) => ParquetResponseLine::File(
-                FileParquetLine::from_add_with_opts(file, None, None, None),
-            ),
-            SignedDataFile::Add(add) => ParquetResponseLine::Add(add.into()),
-            SignedDataFile::Cdf(cdf) => ParquetResponseLine::Cdf(cdf.into()),
-            SignedDataFile::Remove(remove) => ParquetResponseLine::Remove(remove.into()),
+impl ParquetResponseLine {
+    async fn sign(&mut self, table_root: &str, signer: Arc<dyn UrlSigner>) {
+        match self {
+            Self::File(file) => {
+                file.sign(table_root, signer).await;
+            }
+            _ => {}
         }
+    }
+}
+
+impl From<ProtocolLine> for ParquetResponseLine {
+    fn from(protocol: ProtocolLine) -> Self {
+        Self::Protocol(protocol)
+    }
+}
+
+impl From<MetadataLine> for ParquetResponseLine {
+    fn from(metadata: MetadataLine) -> Self {
+        Self::Metadata(metadata)
+    }
+}
+
+impl From<FileLine> for ParquetResponseLine {
+    fn from(file: FileLine) -> Self {
+        Self::File(file)
     }
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProtocolParquetLine {
+struct ProtocolLine {
     min_reader_version: u32,
 }
 
-impl ProtocolParquetLine {
+impl ProtocolLine {
     fn from_protocol(protocol: Protocol) -> Self {
-        Self {
-            min_reader_version: u32::try_from(protocol.min_reader_version)
-                .expect("protocol min_reader_version is non-negative"),
-        }
-    }
-}
+        let min_reader_version = u32::try_from(protocol.min_reader_version)
+            .expect("protocol min_reader_version is non-negative");
 
-impl From<Protocol> for ProtocolParquetLine {
-    fn from(protocol: Protocol) -> Self {
-        Self::from_protocol(protocol)
+        Self { min_reader_version }
     }
 }
 
@@ -129,14 +153,6 @@ impl From<Protocol> for ProtocolParquetLine {
 #[serde(rename_all = "camelCase")]
 struct ParquetResponseFormat {
     provider: String,
-}
-
-impl Default for ParquetResponseFormat {
-    fn default() -> Self {
-        Self {
-            provider: "parquet".to_owned(),
-        }
-    }
 }
 
 impl From<Format> for ParquetResponseFormat {
@@ -149,7 +165,7 @@ impl From<Format> for ParquetResponseFormat {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MetadataParquetLine {
+struct MetadataLine {
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
@@ -168,7 +184,7 @@ struct MetadataParquetLine {
     num_files: Option<u64>,
 }
 
-impl MetadataParquetLine {
+impl MetadataLine {
     fn from_metadata_with_opts(
         metadata: Metadata,
         version: Option<u64>,
@@ -179,7 +195,7 @@ impl MetadataParquetLine {
             id: metadata.id,
             name: metadata.name,
             description: metadata.description,
-            format: ParquetResponseFormat::from(metadata.format),
+            format: metadata.format.into(),
             schema_string: metadata.schema_string,
             partition_columns: metadata.partition_columns,
             configuration: metadata.configuration,
@@ -192,7 +208,7 @@ impl MetadataParquetLine {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FileParquetLine {
+struct FileLine {
     url: String,
     id: String,
     partition_values: HashMap<String, Option<String>>,
@@ -204,15 +220,15 @@ struct FileParquetLine {
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    expiration_timestamp: Option<u64>,
+    expiration_timestamp: Option<i64>,
 }
 
-impl FileParquetLine {
+impl FileLine {
     fn from_add_with_opts(
         add: Add,
         version: Option<u64>,
         timestamp: Option<u64>,
-        expiration_timestamp: Option<u64>,
+        expiration_timestamp: Option<i64>,
     ) -> Self {
         let file_id = format!("{:x}", md5::compute(add.path.as_bytes()));
         let size = u64::try_from(add.size).expect("file size is non-negative");
@@ -227,87 +243,31 @@ impl FileParquetLine {
             expiration_timestamp,
         }
     }
-}
 
-impl From<Add> for FileParquetLine {
-    fn from(add: Add) -> Self {
-        let file_id = format!("{:x}", md5::compute(add.path.as_bytes()));
-        Self {
-            url: add.path,
-            id: file_id,
-            partition_values: add.partition_values,
-            size: add.size as u64,
-            stats: add.stats,
-            version: None,
-            timestamp: None,
-            expiration_timestamp: None,
-        }
-    }
-}
+    async fn sign(&mut self, root_path: &str, signer: Arc<dyn UrlSigner>) {
+        let file_url = format!("{}/{}", root_path, self.url);
+        let signed_url = signer.sign_url(&file_url).await;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AddParquetLine {
-    url: String,
-    id: String,
-    partition_values: Vec<String>,
-    size: u64,
-    timestamp: u64,
-    version: u32,
-    stats: Option<String>,
-    expiration_timestamp: Option<u64>,
-}
-
-impl From<Add> for AddParquetLine {
-    fn from(_add: Add) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CdfParquetLine {
-    url: String,
-    id: String,
-    partition_values: Vec<String>,
-    size: u64,
-    timestamp: u64,
-    version: u32,
-    expiration_timestamp: Option<u64>,
-}
-
-impl From<AddCDCFile> for CdfParquetLine {
-    fn from(_add_cdc_file: AddCDCFile) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RemoveParquetLine {
-    url: String,
-    id: String,
-    partition_values: Vec<String>,
-    size: u64,
-    timestamp: u64,
-    version: u32,
-    expiration_timestamp: Option<u64>,
-}
-
-impl From<Remove> for RemoveParquetLine {
-    fn from(_remove: Remove) -> Self {
-        todo!()
+        self.url = signed_url.url().to_string();
+        self.expiration_timestamp = Some(signed_url.expires_at().timestamp_millis());
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use chrono::{TimeZone, Utc};
+    use delta_kernel::actions::Format;
     use insta::assert_json_snapshot;
+    use mockall::predicate::eq;
+
+    use crate::signer::{MockUrlSigner, SignedUrl};
 
     use super::*;
 
     #[test]
-    fn protocol_parquet_line() {
+    fn build_protocol_parquet_line() {
         let protocol = Protocol {
             min_reader_version: 1,
             min_writer_version: 2,
@@ -315,15 +275,14 @@ mod test {
             writer_features: None,
         };
 
-        let protocol_line = ProtocolParquetLine::from_protocol(protocol);
-        assert_eq!(protocol_line.min_reader_version, 1);
-
+        let protocol_line = ProtocolLine::from_protocol(protocol);
         let line = ParquetResponseLine::Protocol(protocol_line);
+
         assert_json_snapshot!(line);
     }
 
     #[test]
-    fn metadata_parquet_line() {
+    fn build_metadata_parquet_line() {
         let metadata = Metadata {
             id: String::from("f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2"),
             name: Some(String::from("name")),
@@ -338,28 +297,16 @@ mod test {
             configuration: HashMap::from_iter([("opt1".to_owned(), Some("true".to_owned()))]),
         };
 
-        let mline =
-            MetadataParquetLine::from_metadata_with_opts(metadata, Some(1), Some(123456), Some(5));
-        assert_eq!(mline.id, "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2");
-        assert_eq!(mline.name, Some("name".to_owned()));
-        assert_eq!(mline.description, Some("description".to_owned()));
-        assert_eq!(mline.format.provider, "parquet");
-        assert_eq!(mline.schema_string, "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}}]}");
-        assert_eq!(mline.partition_columns, vec!["date".to_owned()]);
-        assert_eq!(mline.configuration.len(), 1);
-        assert_eq!(mline.configuration["opt1"].as_deref(), Some("true"));
-        assert_eq!(mline.version, Some(1));
-        assert_eq!(mline.size, Some(123456));
-        assert_eq!(mline.num_files, Some(5));
-
+        let mline = MetadataLine::from_metadata_with_opts(metadata, Some(1), Some(123456), Some(5));
         let line = ParquetResponseLine::Metadata(mline);
+
         assert_json_snapshot!(line);
     }
 
     #[test]
-    fn file_parquet_line() {
+    fn build_file_parquet_line() {
         let add = Add {
-            path: "https://bucket/key?sig=foo".to_owned(),
+            path: "key.snappy.parquet".to_owned(),
             partition_values: HashMap::from_iter([(
                 "date".to_owned(),
                 Some("2021-04-28".to_owned()),
@@ -368,34 +315,57 @@ mod test {
             stats: Some("{\"numRecords\":1}".to_owned()),
             modification_time: 1619824428000,
             data_change: false,
-            tags: None,
+            tags: HashMap::new(),
             deletion_vector: None,
             base_row_id: None,
             default_row_commit_version: None,
             clustering_provider: None,
-            stats_parsed: None,
         };
 
-        let fline = FileParquetLine::from_add_with_opts(
-            add,
-            Some(1),
-            Some(1619824428000),
-            Some(1619824430000),
-        );
-        assert_eq!(fline.url, "https://bucket/key?sig=foo");
-        assert_eq!(fline.id, "e4250277491e245118e0d72a3287d385");
-        assert_eq!(fline.partition_values.len(), 1);
-        assert_eq!(
-            fline.partition_values["date"],
-            Some("2021-04-28".to_owned())
-        );
-        assert_eq!(fline.size, 573);
-        assert_eq!(fline.stats, Some("{\"numRecords\":1}".to_owned()));
-        assert_eq!(fline.version, Some(1));
-        assert_eq!(fline.timestamp, Some(1619824428000));
-        assert_eq!(fline.expiration_timestamp, Some(1619824430000));
-
-        let line = ParquetResponseLine::File(fline);
+        let file_line =
+            FileLine::from_add_with_opts(add, Some(1), Some(1619824428000), Some(1619824430000));
+        let line = ParquetResponseLine::File(file_line);
         assert_json_snapshot!(line);
+    }
+
+    #[tokio::test]
+    async fn sign_file_response_line() {
+        let add = Add {
+            path: "key.snappy.parquet".to_owned(),
+            partition_values: HashMap::new(),
+            size: 573,
+            stats: None,
+            modification_time: 1619824428000,
+            data_change: false,
+            tags: HashMap::new(),
+            deletion_vector: None,
+            base_row_id: None,
+            default_row_commit_version: None,
+            clustering_provider: None,
+        };
+        let mut file_line = FileLine::from_add_with_opts(add, None, None, None);
+
+        let mut mock_signer = MockUrlSigner::new();
+        mock_signer
+            .expect_sign_url()
+            .with(eq("s3://bucket/prefix/key.snappy.parquet"))
+            .once()
+            .returning(|_| {
+                let url = String::from("s3://bucket/prefix/key.snappy.parquet?sig=foo_signature");
+                let valid_from = Utc.timestamp_opt(1_610_000_000, 0).unwrap();
+                let expiration = Duration::from_secs(3600);
+                SignedUrl::new(url, valid_from, expiration)
+            });
+
+        file_line
+            .sign("s3://bucket/prefix", Arc::new(mock_signer))
+            .await;
+
+        assert_eq!(
+            file_line.url,
+            "s3://bucket/prefix/key.snappy.parquet?sig=foo_signature"
+        );
+        assert_eq!(file_line.expiration_timestamp, Some(1_610_003_600_000));
+        assert_json_snapshot!(file_line);
     }
 }

@@ -2,16 +2,16 @@
 
 use std::sync::Arc;
 
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use crate::{
     auth::RecipientId,
     catalog::{Catalog, Page, Pagination, Schema, Share, Table},
     error::ServerError,
     extract::Capabilities,
-    reader::{TableMetadata, TableReader, TableVersionNumber, Version},
+    reader::{TableReader, TableVersionNumber, Version},
     response::TableActionsResponse,
-    signer::{registry::SignerRegistry, SignedTableData, UrlSigner},
+    signer::{registry::SignerRegistry, UrlSigner},
 };
 
 /// State of the sharing server.
@@ -153,7 +153,7 @@ impl SharingServerState {
         schema_name: &str,
         table_name: &str,
         _capabilities: &Capabilities,
-    ) -> Result<TableMetadata, ServerError> {
+    ) -> Result<TableActionsResponse, ServerError> {
         let table = self
             .catalog
             .get_table(client_id, share_name, schema_name, table_name)
@@ -161,11 +161,13 @@ impl SharingServerState {
 
         dbg!(&table);
 
-        let metadata = self.reader.get_table_metadata(table.storage_path()).await?;
+        let metadata = self.reader.get_table_meta(table.storage_path()).await?;
 
         dbg!(&metadata);
 
-        Ok(metadata)
+        todo!()
+
+        // Ok(metadata)
     }
 
     /// Get the data files of a table version.
@@ -178,28 +180,24 @@ impl SharingServerState {
         _version: Version,
         _capabilities: &Capabilities,
     ) -> Result<TableActionsResponse, ServerError> {
+        debug!("fetching table from catalog");
         let table = self
             .catalog
             .get_table(client_id, share_name, schema_name, table_name)
             .await?;
 
-        dbg!(&table);
-
+        debug!("reading table data from reader");
         let table_data = self
             .reader
             .get_table_data(table.storage_path(), Version::Latest, None, None, None)
             .await?;
 
-        dbg!(&table_data);
-
+        debug!("signing table data");
         let signer = self.signers.get_or_noop("s3");
-        let signed_table_data = signer.sign_table_data(table_data).await;
+        let unsigned_actions = TableActionsResponse::new_parquet(table_data);
+        let signed_actions = unsigned_actions.sign(table.storage_path(), signer).await;
 
-        
-
-        dbg!(&signed_table_data);
-
-        Ok(signed_table_data)
+        Ok(signed_actions)
     }
 }
 
