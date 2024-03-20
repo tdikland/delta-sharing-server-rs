@@ -5,11 +5,13 @@ use bytes::{BufMut, BytesMut};
 use delta_kernel::actions::{Add, Metadata, Protocol};
 use http::{header, StatusCode};
 use serde::Serialize;
+use tracing::warn;
 use url::Url;
 
 use crate::reader::{TableData, TableMeta};
 use crate::signer::UrlSigner;
 
+#[derive(Debug, Clone, Serialize)]
 pub struct DeltaResponse {
     version: u64,
     protocol: DeltaResponseLine,
@@ -221,8 +223,15 @@ impl FileResponseLine {
                     match dv.storage_type.as_str() {
                         "i" => (),
                         "u" => {
-                            let parent = Url::parse(table_root).unwrap();
+                            let root = match table_root.ends_with('/') {
+                                true => format!("{}", table_root),
+                                false => format!("{}/", table_root),
+                            };
+
+                            let parent = Url::parse(&root).unwrap();
+                            warn!("parent: {:?}", parent);
                             let deletion_vector_url = dv.absolute_path(&parent).unwrap().unwrap();
+                            warn!("deletion_vector_url: {:?}", deletion_vector_url);
                             let signed_deletion_vector_url =
                                 signer.sign_url(deletion_vector_url.as_str()).await;
 

@@ -213,6 +213,7 @@ impl IntoResponse for TableVersionResponse {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum TableActionsResponse {
     Parquet(ParquetResponse),
     Delta(DeltaResponse),

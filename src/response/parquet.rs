@@ -10,6 +10,7 @@ use crate::{
     signer::UrlSigner,
 };
 
+#[derive(Debug, Clone, Serialize)]
 pub struct ParquetResponse {
     version: u64,
     protocol: ParquetResponseLine,

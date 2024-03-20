@@ -193,9 +193,11 @@ impl SharingServerState {
             ResponseFormat::Delta => TableActionsResponse::new_delta(table_data),
         };
 
-        debug!("signing table actions");
+        debug!(root = table.storage_path(), "signing table actions");
         let signer = self.signers.get_or_noop("s3");
         let signed_actions = unsigned_actions.sign(table.storage_path(), signer).await;
+
+        debug!(actions = ?signed_actions, "signed table actions");
 
         Ok(signed_actions)
     }

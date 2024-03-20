@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: "parquet".to_owned(),
+                response_format: ResponseFormat::Parquet,
                 reader_features: None
             }
         );
@@ -386,7 +386,7 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: "parquet".to_owned(),
+                response_format: ResponseFormat::Parquet,
                 reader_features: None
             }
         );
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: "delta".to_owned(),
+                response_format: ResponseFormat::Delta,
                 reader_features: Some(vec![
                     "deletionvectors".to_owned(),
                     "columnmapping".to_owned()
