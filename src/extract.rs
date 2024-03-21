@@ -1,3 +1,5 @@
+use std::{char::ToLowercase, collections::HashMap};
+
 use async_trait::async_trait;
 use axum::{extract::FromRequestParts, http::request::Parts};
 use chrono::{DateTime, Utc};
@@ -35,8 +37,11 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let value = serde_urlencoded::from_str(query)
-            .map_err(|e| ServerError::invalid_query_params(e.to_string()))?;
+        let value = serde_urlencoded::from_str(query).map_err(|e| {
+            ServerError::invalid_query_params(format!(
+                "Invalid pagination query parameters. Reason: `{e}`"
+            ))
+        })?;
         Ok(value)
     }
 }
@@ -56,8 +61,11 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let value = serde_urlencoded::from_str::<VersionQueryParams>(query)
-            .map_err(|_| ServerError::invalid_query_params("invalid version query parameter"))?;
+        let value = serde_urlencoded::from_str::<VersionQueryParams>(query).map_err(|e| {
+            ServerError::invalid_query_params(format!(
+                "invalid version query parameter. Reason: `{e}`"
+            ))
+        })?;
         match value.starting_timestamp {
             Some(ts) => Ok(Version::Timestamp(ts)),
             None => Ok(Version::Latest),
@@ -73,29 +81,45 @@ pub enum ResponseFormat {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Capabilities {
-    response_format: ResponseFormat,
+    response_format: Option<Vec<ResponseFormat>>,
     reader_features: Option<Vec<String>>,
 }
 
 impl Capabilities {
+    pub fn supports_delta_format(&self) -> bool {
+        match &self.response_format {
+            Some(formats) => formats.contains(&ResponseFormat::Delta),
+            None => false,
+        }
+    }
+
+    pub fn supports_reader_feature(&self, feature: &str) -> bool {
+        match &self.reader_features {
+            Some(features) => features.iter().any(|feat| feat == feature),
+            None => false,
+        }
+    }
+
+    pub fn support_protocol(
+        &self,
+        min_reader_version: i32,
+        required_required_features: &[String],
+    ) -> bool {
+        match (min_reader_version == 1, self.supports_delta_format()) {
+            (true, _) => true,
+            (false, false) => false,
+            (false, true) => required_required_features
+                .iter()
+                .all(|feat| self.supports_reader_feature(feat)),
+        }
+    }
+
     pub fn response_format(&self) -> ResponseFormat {
-        self.response_format
-    }
-
-    pub fn is_delta_format(&self) -> bool {
-        self.response_format() == ResponseFormat::Delta
-    }
-
-    /// Returns the reader features if present.
-    pub fn reader_features(&self) -> Option<&Vec<String>> {
-        self.reader_features.as_ref()
-    }
-
-    /// Returns true if the reader features contain the given feature.
-    pub fn has_reader_feature(&self, feature: &str) -> bool {
-        self.reader_features()
-            .map(|features| features.contains(&feature.to_owned()))
-            .unwrap_or_default()
+        if self.supports_delta_format() {
+            ResponseFormat::Delta
+        } else {
+            ResponseFormat::Parquet
+        }
     }
 }
 
@@ -107,49 +131,51 @@ where
     type Rejection = ServerError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let header = parts.headers.get("delta-sharing-capabilities");
+        let Some(h) = parts.headers.get("delta-sharing-capabilities") else {
+            return Ok(Capabilities {
+                response_format: None,
+                reader_features: None,
+            });
+        };
 
-        if let Some(h) = header {
-            let value = h
-                .to_str()
-                .map_err(|_| ServerError::invalid_query_params("capability header"))?;
-            let mut response_format = None;
-            let mut reader_features = None;
+        let cap_header_value = h.to_str().map_err(|_| {
+            ServerError::invalid_header_value("Invalid delta-sharing-capability header")
+        })?;
 
-            for pair in value.split(';') {
-                let mut iter = pair.split('=');
-                let key = iter.next().unwrap();
-                let value = iter.next().unwrap_or_default();
+        let mut capabilities = Capabilities {
+            response_format: None,
+            reader_features: None,
+        };
 
-                match key {
-                    "responseformat" => {
-                        response_format = {
-                            match value {
-                                "parquet" => Some(ResponseFormat::Parquet),
-                                "delta" => Some(ResponseFormat::Delta),
-                                _ => None,
-                            }
-                        }
-                    }
-                    "readerfeatures" => {
-                        reader_features = Some(value.split(',').map(|s| s.to_owned()).collect())
-                    }
-                    _ => {}
+        for capability in cap_header_value.split(';') {
+            let Some((cap_key, cap_values)) = capability.split_once('=') else {
+                continue;
+            };
+
+            match cap_key {
+                "responseformat" => {
+                    let parsed_values = cap_values
+                        .split(",")
+                        .flat_map(|i| match i.to_lowercase().as_ref() {
+                            "parquet" => Some(ResponseFormat::Parquet),
+                            "delta" => Some(ResponseFormat::Delta),
+                            _ => None,
+                        })
+                        .collect::<Vec<ResponseFormat>>();
+                    capabilities.response_format = Some(parsed_values);
                 }
-            }
-
-            if let Some(response_format) = response_format {
-                return Ok(Capabilities {
-                    response_format,
-                    reader_features,
-                });
+                "readerfeatures" => {
+                    let parsed_values = cap_values
+                        .split(',')
+                        .map(|s| s.to_lowercase())
+                        .collect::<Vec<String>>();
+                    capabilities.reader_features = Some(parsed_values);
+                }
+                _ => {}
             }
         }
 
-        Ok(Capabilities {
-            response_format: ResponseFormat::Parquet,
-            reader_features: None,
-        })
+        Ok(capabilities)
     }
 }
 
@@ -321,8 +347,16 @@ mod tests {
         let uri = "http://example.com/test?maxResults=aaa";
         let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
         assert_eq!(
-            Pagination::from_request(req, &()).await.unwrap_err(),
-            ServerError::invalid_query_params("message")
+            Pagination::from_request(req, &()).await.unwrap_err().kind(),
+            ServerErrorKind::InvalidParameters
+        );
+
+        // Invalid datatype for maxResults -> should be >= 0
+        let uri = "http://example.com/test?maxResults=-1";
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        assert_eq!(
+            Pagination::from_request(req, &()).await.unwrap_err().kind(),
+            ServerErrorKind::InvalidParameters
         );
     }
 
@@ -355,8 +389,8 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         assert_eq!(
-            Version::from_request(req, &()).await.unwrap_err(),
-            ServerError::invalid_query_params("message")
+            Version::from_request(req, &()).await.unwrap_err().kind(),
+            ServerErrorKind::InvalidParameters
         );
     }
 
@@ -371,7 +405,7 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: ResponseFormat::Parquet,
+                response_format: None,
                 reader_features: None
             }
         );
@@ -386,7 +420,7 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: ResponseFormat::Parquet,
+                response_format: Some(vec![ResponseFormat::Parquet]),
                 reader_features: None
             }
         );
@@ -404,7 +438,28 @@ mod tests {
         assert_eq!(
             Capabilities::from_request(req, &()).await.unwrap(),
             Capabilities {
-                response_format: ResponseFormat::Delta,
+                response_format: Some(vec![ResponseFormat::Delta]),
+                reader_features: Some(vec![
+                    "deletionvectors".to_owned(),
+                    "columnmapping".to_owned()
+                ])
+            }
+        );
+
+        // Custom delta capabilities
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .header(
+                "delta-sharing-capabilities",
+                "responseformat=parquet,DELTA;readerfeatures=DELETIONVECTORS,columnmapping",
+            )
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            Capabilities::from_request(req, &()).await.unwrap(),
+            Capabilities {
+                response_format: Some(vec![ResponseFormat::Parquet, ResponseFormat::Delta]),
                 reader_features: Some(vec![
                     "deletionvectors".to_owned(),
                     "columnmapping".to_owned()

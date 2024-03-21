@@ -1,9 +1,9 @@
 shares:
-- name: "tim"
-  schemas:
-  - name: "esther"
-    tables:
-    - name: "smoes"
-      location: "s3://delta-sharing-dat/table-with-dv-small"
-    # - name: "beer"
-    #   location: "s3://delta-sharing-dat/all_primitive_types"
+  - name: "tim"
+    schemas:
+      - name: "esther"
+        tables:
+          - name: "smoes"
+            location: "s3://delta-sharing-dat/table-with-dv-small"
+          - name: "beer"
+            location: "s3://delta-sharing-dat/basic_append/delta"

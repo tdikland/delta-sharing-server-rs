@@ -17,9 +17,7 @@ async fn main() {
         .init();
 
     // configure catalog
-    let config = FileCatalogConfig::new(
-        "/Users/timdikland/projects/delta-sharing-server-rs/examples/config.yaml",
-    );
+    let config = FileCatalogConfig::new("./examples/config.yaml");
     let catalog = Arc::new(FileCatalog::new(config));
 
     // configure table reader

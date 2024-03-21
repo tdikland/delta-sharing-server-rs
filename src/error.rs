@@ -16,6 +16,7 @@ pub type Result<T> = core::result::Result<T, ServerError>;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ServerErrorKind {
     InvalidParameters,
+    InvalidHeaderValue,
     Unauthorized,
     Forbidden,
     ResourceNotFound,
@@ -27,6 +28,7 @@ impl Display for ServerErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidParameters => write!(f, "INVALID_PARAMETERS"),
+            Self::InvalidHeaderValue => write!(f, "INVALID_HEADER_VALUE"),
             Self::Unauthorized => write!(f, "UNAUTHORIZED"),
             Self::Forbidden => write!(f, "FORBIDDEN"),
             Self::ResourceNotFound => write!(f, "RESOURCE_NOT_FOUND"),
@@ -57,6 +59,10 @@ impl ServerError {
 
     pub fn invalid_query_params(message: impl Into<String>) -> Self {
         Self::new(ServerErrorKind::InvalidParameters, message.into())
+    }
+
+    pub fn invalid_header_value(message: impl Into<String>) -> Self {
+        Self::new(ServerErrorKind::InvalidHeaderValue, message.into())
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
@@ -130,6 +136,7 @@ impl IntoResponse for ServerError {
             ServerErrorKind::ResourceNotFound => StatusCode::NOT_FOUND,
             ServerErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             ServerErrorKind::UnsupportedOperation => StatusCode::NOT_IMPLEMENTED,
+            _ => StatusCode::BAD_REQUEST, // TODO: fix
         };
 
         (

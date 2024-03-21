@@ -152,7 +152,7 @@ impl SharingServerState {
         share_name: &str,
         schema_name: &str,
         table_name: &str,
-        _capabilities: &Capabilities,
+        capabilities: &Capabilities,
     ) -> Result<TableActionsResponse, ServerError> {
         info!("fetching table from catalog");
         let table = self
@@ -161,9 +161,21 @@ impl SharingServerState {
             .await?;
 
         info!("reading delta log");
-        let metadata = self.reader.get_table_meta(table.storage_path()).await?;
+        let table_meta = self.reader.get_table_meta(table.storage_path()).await?;
 
-        Ok(TableActionsResponse::new_parquet(metadata))
+        // if !capabilities.support_protocol(
+        //     table_meta.protocol().min_reader_version(),
+        //     table_meta.protocol().reader_features().unwrap_or(&vec![]),
+        // ) {
+        //     return Err(ServerError::unsupported_operation(
+        //         "the client did not announce the needed features to read the shared table",
+        //     ));
+        // }
+
+        match capabilities.response_format() {
+            ResponseFormat::Delta => Ok(TableActionsResponse::new_delta(table_meta)),
+            ResponseFormat::Parquet => Ok(TableActionsResponse::new_parquet(table_meta)),
+        }
     }
 
     /// Get the data files of a table version.
@@ -188,9 +200,20 @@ impl SharingServerState {
             .get_table_data(table.storage_path(), Version::Latest, None, None, None)
             .await?;
 
+        debug!("checking capabilities against table protocol");
+        // if !capabilities.support_protocol(
+        //     table_data.protocol().min_reader_version(),
+        //     table_data.protocol().reader_features().unwrap_or(&vec![]),
+        // ) {
+        //     return Err(ServerError::unsupported_operation(
+        //         "the client did not announce the needed features to read the shared table",
+        //     ));
+        // }
+
+        debug!("formatting response");
         let unsigned_actions = match capabilities.response_format() {
-            ResponseFormat::Parquet => TableActionsResponse::new_parquet(table_data),
             ResponseFormat::Delta => TableActionsResponse::new_delta(table_data),
+            ResponseFormat::Parquet => TableActionsResponse::new_parquet(table_data),
         };
 
         debug!(root = table.storage_path(), "signing table actions");

@@ -203,6 +203,14 @@ impl TableProtocol {
     pub fn into_inner(self) -> Protocol {
         self.inner
     }
+
+    pub fn min_reader_version(&self) -> i32 {
+        self.inner.min_reader_version
+    }
+
+    pub fn reader_features(&self) -> Option<&Vec<String>> {
+        self.inner.reader_features.as_ref()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
