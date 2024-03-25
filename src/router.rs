@@ -10,7 +10,7 @@ use axum::{
 };
 use tracing::{info_span, Instrument};
 
-use crate::extract::Capabilities;
+use crate::extract::{Capabilities, TableChangePredicates};
 use crate::{
     auth::RecipientId,
     catalog::Pagination,
@@ -217,11 +217,19 @@ async fn get_table_data(
 #[debug_handler]
 async fn get_table_changes(
     _state: State<Arc<SharingServerState>>,
-    _recipient_id: RecipientId,
-    _capabilities: Capabilities,
-    Path((_share_name, _schema_name, _table_name)): Path<(String, String, String)>,
-    // _version_range: TableChangePredicates,
+    recipient_id: RecipientId,
+    capabilities: Capabilities,
+    Path((share_name, schema_name, table_name)): Path<(String, String, String)>,
+    _version_range: TableChangePredicates,
 ) -> Result<TableActionsResponse> {
+    let _span = info_span!(
+        "get table changes",
+        ?recipient_id,
+        ?capabilities,
+        ?share_name,
+        ?schema_name,
+        ?table_name
+    );
     Err(ServerError::unsupported_operation(
         "table changes support not yet implemented",
     ))
