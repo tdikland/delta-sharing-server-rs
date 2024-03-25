@@ -2,15 +2,18 @@
 
 use std::sync::Arc;
 
-use tracing::{debug, info, info_span, instrument};
+use tracing::{debug, info};
 
 use crate::{
     auth::RecipientId,
-    catalog::{Catalog, Page, Pagination, Schema, Share, Table},
+    catalog::{Catalog, Pagination},
     error::ServerError,
     extract::{Capabilities, ResponseFormat},
-    reader::{TableReader, TableVersionNumber, Version},
-    response::{ListSharesResponse, TableActionsResponse},
+    reader::{TableReader, Version},
+    response::{
+        GetShareResponse, ListSchemasResponse, ListSharesResponse, ListTablesResponse,
+        TableActionsResponse, TableVersionResponse,
+    },
     signer::{registry::SignerRegistry, UrlSigner},
 };
 
@@ -74,10 +77,11 @@ impl SharingServerState {
         &self,
         client_id: &RecipientId,
         share_name: &str,
-    ) -> Result<Share, ServerError> {
+    ) -> Result<GetShareResponse, ServerError> {
         self.catalog
             .get_share(client_id, share_name)
             .await
+            .map(GetShareResponse::from)
             .map_err(Into::into)
     }
 
@@ -87,11 +91,12 @@ impl SharingServerState {
         client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Schema>, ServerError> {
-        Ok(self
-            .catalog
+    ) -> Result<ListSchemasResponse, ServerError> {
+        self.catalog
             .list_schemas(client_id, share_name, pagination)
-            .await?)
+            .await
+            .map(ListSchemasResponse::from)
+            .map_err(Into::into)
     }
 
     /// Get a list of tables in a share.
@@ -100,11 +105,12 @@ impl SharingServerState {
         client_id: &RecipientId,
         share_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, ServerError> {
-        Ok(self
-            .catalog
+    ) -> Result<ListTablesResponse, ServerError> {
+        self.catalog
             .list_tables_in_share(client_id, share_name, pagination)
-            .await?)
+            .await
+            .map(ListTablesResponse::from)
+            .map_err(Into::into)
     }
 
     /// Get a list of tables in a schema.
@@ -114,11 +120,12 @@ impl SharingServerState {
         share_name: &str,
         schema_name: &str,
         pagination: &Pagination,
-    ) -> Result<Page<Table>, ServerError> {
-        Ok(self
-            .catalog
+    ) -> Result<ListTablesResponse, ServerError> {
+        self.catalog
             .list_tables_in_schema(client_id, share_name, schema_name, pagination)
-            .await?)
+            .await
+            .map(ListTablesResponse::from)
+            .map_err(Into::into)
     }
 
     /// Get the version of a table.
@@ -129,7 +136,7 @@ impl SharingServerState {
         schema_name: &str,
         table_name: &str,
         version: Version,
-    ) -> Result<TableVersionNumber, ServerError> {
+    ) -> Result<TableVersionResponse, ServerError> {
         let table = self
             .catalog
             .get_table(client_id, share_name, schema_name, table_name)
@@ -142,7 +149,7 @@ impl SharingServerState {
             .get_table_version_number(table.storage_path(), version)
             .await?;
 
-        Ok(table_version)
+        Ok(table_version.into())
     }
 
     /// Get the metadata of a table.
@@ -163,14 +170,14 @@ impl SharingServerState {
         info!("reading delta log");
         let table_meta = self.reader.get_table_meta(table.storage_path()).await?;
 
-        // if !capabilities.support_protocol(
-        //     table_meta.protocol().min_reader_version(),
-        //     table_meta.protocol().reader_features().unwrap_or(&vec![]),
-        // ) {
-        //     return Err(ServerError::unsupported_operation(
-        //         "the client did not announce the needed features to read the shared table",
-        //     ));
-        // }
+        if !capabilities.support_protocol(
+            table_meta.protocol().min_reader_version(),
+            table_meta.protocol().reader_features().unwrap_or(&vec![]),
+        ) {
+            return Err(ServerError::unsupported_operation(
+                "the client did not announce the needed features to read the shared table",
+            ));
+        }
 
         match capabilities.response_format() {
             ResponseFormat::Delta => Ok(TableActionsResponse::new_delta(table_meta)),
@@ -201,14 +208,14 @@ impl SharingServerState {
             .await?;
 
         debug!("checking capabilities against table protocol");
-        // if !capabilities.support_protocol(
-        //     table_data.protocol().min_reader_version(),
-        //     table_data.protocol().reader_features().unwrap_or(&vec![]),
-        // ) {
-        //     return Err(ServerError::unsupported_operation(
-        //         "the client did not announce the needed features to read the shared table",
-        //     ));
-        // }
+        if !capabilities.support_protocol(
+            table_data.protocol().min_reader_version(),
+            table_data.protocol().reader_features().unwrap_or(&vec![]),
+        ) {
+            return Err(ServerError::unsupported_operation(
+                "the client did not announce the needed features to read the shared table",
+            ));
+        }
 
         debug!("formatting response");
         let unsigned_actions = match capabilities.response_format() {
@@ -230,8 +237,8 @@ impl SharingServerState {
 mod test {
     use super::*;
     use crate::{
-        catalog::{CatalogError, MockCatalog},
-        reader::MockTableReader,
+        catalog::{CatalogError, MockCatalog, Page, Schema, Share, Table},
+        reader::{MockTableReader, TableVersionNumber},
     };
     use insta::assert_json_snapshot;
     use mockall::predicate::eq;

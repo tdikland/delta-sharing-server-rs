@@ -1,7 +1,12 @@
 use std::{char::ToLowercase, collections::HashMap};
 
 use async_trait::async_trait;
-use axum::{extract::FromRequestParts, http::request::Parts};
+use axum::{
+    body::Body,
+    extract::{FromRequest, FromRequestParts, Request},
+    http::request::Parts,
+};
+use bytes::{Buf, BufMut, Bytes};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -187,6 +192,22 @@ pub struct TableDataParams {
     limit_hint: Option<i32>,
     version: Option<i32>,
     json_predicate_hints: Option<String>,
+    timestamp: Option<String>,
+    starting_version: Option<i32>,
+    ending_version: Option<i32>,
+}
+
+#[async_trait]
+impl<S> FromRequest<S> for TableDataParams
+where
+    S: Send + Sync,
+{
+    type Rejection = ServerError;
+
+    async fn from_request(req: Request<Body>, state: &S) -> Result<Self, Self::Rejection> {
+        let bytes = Bytes::from_request(req, state).await.unwrap();
+        Ok(serde_json::from_slice(&bytes).unwrap())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -491,7 +512,10 @@ mod tests {
                 predicate_hints: vec![],
                 limit_hint: Some(1000),
                 version: Some(2),
-                json_predicate_hints: Some(String::new())
+                json_predicate_hints: Some(String::new()),
+                timestamp: None,
+                starting_version: None,
+                ending_version: None
             }
         );
 

@@ -4,7 +4,7 @@ use bytes::Bytes;
 use delta_sharing_server::auth::{NoAuthLayer, RecipientId};
 use delta_sharing_server::catalog::file::FileCatalog;
 use delta_sharing_server::reader::delta::DeltaTableReader;
-use delta_sharing_server::router::build_sharing_server_router;
+use delta_sharing_server::router::build_sharing_router;
 use delta_sharing_server::signer::{noop::NoopSigner, registry::SignerRegistry};
 use delta_sharing_server::state::SharingServerState;
 use reqwest::header::{HeaderName, HeaderValue};
@@ -119,7 +119,7 @@ impl TestClient {
         let mut state = SharingServerState::new(catalog, reader, SignerRegistry::new());
         state.add_url_signer("s3", Arc::new(NoopSigner));
 
-        let svc = build_sharing_server_router(Arc::new(state));
+        let svc = build_sharing_router(Arc::new(state));
         let app = svc.layer(TraceLayer::new_for_http()).layer(NoAuthLayer);
 
         let listener = TcpListener::bind("127.0.0.1:0")

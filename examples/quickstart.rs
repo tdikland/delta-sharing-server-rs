@@ -2,7 +2,7 @@ use aws_config::BehaviorVersion;
 use delta_sharing_server::auth::public::PublicAccessAuthLayer;
 use delta_sharing_server::catalog::file::{FileCatalog, FileCatalogConfig};
 use delta_sharing_server::reader::delta::DeltaTableReader;
-use delta_sharing_server::router::build_sharing_server_router;
+use delta_sharing_server::router::build_sharing_router;
 use delta_sharing_server::signer::registry::SignerRegistry;
 use delta_sharing_server::signer::s3::S3UrlSigner;
 use delta_sharing_server::state::SharingServerState;
@@ -35,7 +35,7 @@ async fn main() {
     let state = SharingServerState::new(catalog, delta_table_reader, signers);
 
     // start server
-    let svc = build_sharing_server_router(Arc::new(state));
+    let svc = build_sharing_router(Arc::new(state));
     let app = svc
         .layer(TraceLayer::new_for_http())
         .layer(PublicAccessAuthLayer::new());

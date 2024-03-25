@@ -4,7 +4,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::{config::Credentials, primitives::SdkBody};
 use delta_sharing_server::{
     auth::public::PublicAccessAuthLayer, catalog::postgres::PostgresCatalog,
-    reader::DeltaKernelReader, router::build_sharing_server_router,
+    reader::DeltaKernelReader, router::build_sharing_router,
     signer::registry::SignerRegistry, state::SharingServerState,
 };
 use sqlx::PgPool;
@@ -37,7 +37,7 @@ impl<'a> TestServer<'a> {
         let reader = Arc::new(DeltaKernelReader::default());
         let state = SharingServerState::new(catalog, reader, SignerRegistry::new());
 
-        let svc = build_sharing_server_router(Arc::new(state));
+        let svc = build_sharing_router(Arc::new(state));
         let app = svc
             .layer(TraceLayer::new_for_http())
             .layer(PublicAccessAuthLayer::new());

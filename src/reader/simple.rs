@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use delta_kernel::{
@@ -104,6 +104,8 @@ impl TableReader for DeltaKernelReader {
             .map_err(|_| TableReaderError::Other)?;
         let meta = snap.metadata();
         let protocol = snap.protocol();
+
+        // tokio::spawn(async { tokio::time::sleep(Duration::from_secs(1)).await });
 
         let scan = ScanBuilder::new(snap.clone()).build();
         let files: Vec<Add> = scan

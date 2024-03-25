@@ -9,7 +9,7 @@ use delta_sharing_server::{
     auth::{NoAuthLayer, RecipientId},
     error::ServerError,
     reader::delta::DeltaTableReader,
-    router::build_sharing_server_router,
+    router::build_sharing_router,
     signer::{noop::NoopSigner, registry::SignerRegistry},
     state::SharingServerState,
 };
@@ -53,7 +53,7 @@ impl<'a> TestServer<'a> {
         let mut state = SharingServerState::new(catalog, reader, SignerRegistry::new());
         state.add_url_signer("s3", signer);
 
-        let svc = build_sharing_server_router(Arc::new(state));
+        let svc = build_sharing_router(Arc::new(state));
 
         let app = svc
             .layer(TraceLayer::new_for_http())
